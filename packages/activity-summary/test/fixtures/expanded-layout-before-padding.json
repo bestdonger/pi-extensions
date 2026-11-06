@@ -1,0 +1,38 @@
+{
+  "source": "Pre-padding expanded layout, captured from the existing Pi 1.5.0 plugin",
+  "stats": {
+    "theme": "检查配置 中文👨‍👩‍👧‍👦",
+    "steps": "10",
+    "tools": "7",
+    "ok": "5",
+    "err": "1",
+    "open": "1",
+    "background": "toolErrorBg"
+  },
+  "cases": [
+    {
+      "width": 1,
+      "text": "…"
+    },
+    {
+      "width": 2,
+      "text": "1…"
+    },
+    {
+      "width": 8,
+      "text": "10 steps"
+    },
+    {
+      "width": 40,
+      "text": "10 steps | tools 7 (ok 5, err 1, open 1)"
+    },
+    {
+      "width": 80,
+      "text": "▾ 检查配置 中文👨‍👩‍👧‍👦 | 10 steps | tools 7 (ok 5, err 1, open 1)                    "
+    },
+    {
+      "width": 160,
+      "text": "▾ 检查配置 中文👨‍👩‍👧‍👦 | 10 steps | tools 7 (ok 5, err 1, open 1)                                                                                                    "
+    }
+  ]
+}
