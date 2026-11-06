@@ -60,7 +60,7 @@ Pi 1.5.0 没有公共的 transcript projection / viewport API，因此 `src/brid
 包入口：`src/index.ts`，由 `package.json` 的 `pi.extensions` 声明。
 
 当前全局配置：
-- 本地包：`~/Projects/pi-extensions/packages/activity-summary`（配置使用绝对路径），迁移时全局配置为启用状态。
+- 本地包：`~/Projects/pi-extensions/packages/activity-summary`（配置使用绝对路径）。迁移完成时全局配置保留 `extensions: []`，插件暂时停用；本次迁移只修改加载路径，不改变启停状态。
 - 默认模式：`regular`
 - 原 `@luan.sh/pi-collapse-transcript` 保留安装，但设置 `extensions: []`，包括其捆绑的 libtui 扩展，避免两个投影同时生效。
 - 其他设置不变，包括 `hideThinkingBlock`。
