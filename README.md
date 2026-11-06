@@ -1,43 +1,60 @@
+<div align="center">
+
 # Pi Extensions
 
-为 Pi 定制的终端交互插件：结构化问答，以及更紧凑的思考与工具活动摘要。
+**需要选择时，问清楚。执行过程中，看重点。**
 
-## 插件
+为 Pi 定制的结构化问答与终端活动摘要。
+
+[插件预览](#插件预览) · [快速开始](#快速开始) · [开发指南](docs/development.md) · [反馈问题](https://github.com/bestdonger/pi-extensions/issues)
+
+</div>
+
+---
+
+## 插件预览
 
 ### Ask User Question
 
-让模型在需要决策时直接提问，而不是猜测你的意图。
+把需要你决定的事情，变成可以选择、比较和补充的问卷。
 
-- 单次最多 **10 个问题**，每题 2–4 个选项，支持单选、多选和自由输入。
-- 支持选项预览，用于对比代码、配置和界面草图。
-- 多个问卷串行展示，支持取消与焦点等待，避免对话框互相抢占。
-- 接入 Pi 的等待状态，由 Rex 处理原生通知，不另外发送桌面通知。
+![Ask User Question：左侧选择方案，右侧预览内容，顶部切换问题](docs/assets/ask-user-question.svg)
 
-包名：`@bestdonger/pi-ask-user-question` · 版本：**0.1.0**
+- **一次问清楚** — 最多 10 个问题，支持单选、多选和自由输入。
+- **先比较，再决定** — 在选项旁预览代码、配置或界面草图。
+- **不打架的对话框** — 问卷排队展示，可取消；等待状态接入 Rex 原生通知。
 
-[使用说明](packages/ask-user-question/README.md)
+[问答配置与快捷键 →](packages/ask-user-question/README.md)
 
 ### Activity Summary
 
-在 **regular TUI** 中，将连续的 thinking 和工具调用折叠为活动摘要，正文仍立即流式显示。
+收起连续的思考和工具输出，让正文留在视线里；需要细节时，用 <kbd>Ctrl</kbd> + <kbd>O</kbd> 展开。
 
-```text
-▸ 检查配置 | 10 steps | tools 7 (ok 5, err 1, open 1)
-```
+![Activity Summary 收起状态：步骤和工具结果合并为一条摘要，正文保持可见](docs/assets/activity-collapsed.svg)
 
-- `steps` 统计非空 thinking 块与顶层工具调用；工具分别统计成功、失败和未完成数量。
-- 使用当前 Pi 主题的状态背景，摘要上下留白，不增加动画。
-- 通过原生 **Ctrl+O** 全局展开或收起，保留工具和 Markdown 的原生渲染。
-- 自动更新保护离屏历史，支持会话恢复，不改写原始消息或模型上下文。
-- 不依赖 `pi-libtui`，不接管鼠标或切换到 fullscreen。
+<details>
+<summary><strong>查看展开效果</strong></summary>
 
-包名：`pi-activity-summary` · 版本：**0.1.0**
+<br>
 
-[使用说明](packages/activity-summary/README.md)
+![Activity Summary 展开状态：显示原生思考内容、工具参数和结果](docs/assets/activity-expanded.svg)
 
-## 安装
+</details>
 
-当前通过本地源码加载，**尚未发布 npm 包**。已验证环境为 Pi **1.5.0**；Activity Summary 依赖该版本的内部布局，升级 Pi 后需重新验证。
+- **只统计实际活动** — 显示思考与顶层工具的步骤数，以及工具成功、失败和未完成数量。
+- **保留终端习惯** — 使用 regular 模式、原生滚动历史和全局展开快捷键，不接管鼠标。
+- **只改变显示** — 正文实时输出，原始消息、工具结果和模型上下文不变。
+
+[摘要行为与兼容说明 →](packages/activity-summary/README.md)
+
+<sub>以上为 Pi 1.5.0 下真实插件组件的渲染预览，使用离线示例数据；并非桌面截图。终端字体、主题和宽度会影响实际显示。</sub>
+
+## 快速开始
+
+> [!IMPORTANT]
+> 当前通过本地源码加载，尚未发布 npm 包。已验证 **Pi 1.5.0**；Activity Summary 仅用于 **regular TUI**，宿主升级后需重新验证。
+
+**1. 获取源码并准备 Ask 的运行依赖**
 
 ```sh
 git clone https://github.com/bestdonger/pi-extensions.git ~/Projects/pi-extensions
@@ -45,40 +62,30 @@ cd ~/Projects/pi-extensions/packages/ask-user-question
 npm install --no-save --package-lock=false --legacy-peer-deps --ignore-scripts @juicesharp/rpiv-config@2.15.0
 ```
 
-将需要的插件路径加入 `~/.pi/agent/settings.json` 的 `packages`，保留已有的其他配置。下面的 `/absolute/path` 请替换为实际绝对路径：
-
-```json
-{
-  "packages": [
-    "/absolute/path/pi-extensions/packages/ask-user-question",
-    "/absolute/path/pi-extensions/packages/activity-summary"
-  ]
-}
-```
-
-执行 `/reload` 或重开 Pi。Activity Summary 需使用 regular 模式，且不应与其他 transcript 投影插件同时启用。只想保留安装而暂不启用时，可将对应条目写为：
-
-```json
-{
-  "source": "/absolute/path/pi-extensions/packages/activity-summary",
-  "extensions": []
-}
-```
-
-## 开发
-
-每个插件独立管理版本、依赖和测试，共用此 Git 仓库。源码修改后执行 `/reload`；Pi 的包更新不会覆盖本地路径包。
+**2. 按需安装插件**
 
 ```sh
-(cd packages/ask-user-question && npm test)
-(cd packages/activity-summary && bun test)
+# 结构化问答
+pi install "$HOME/Projects/pi-extensions/packages/ask-user-question"
+
+# 活动摘要（regular 模式）
+pi install "$HOME/Projects/pi-extensions/packages/activity-summary"
 ```
 
-测试需要支持直接运行 TypeScript 的 Node.js 和 Bun。Ask 集成测试通过 `PI_PACKAGE_ROOT` 指定宿主位置，默认使用 Homebrew 的 Pi 安装路径；Activity Summary 测试需将宿主模块链接到其 `node_modules`，详见插件文档。部分测试仍有本机路径假设，不是开箱即用的跨平台 CI。
+**3. 在 Pi 中执行 `/reload`，或重新开启会话。**
 
-`node_modules` 不入库，不将第二份 Pi 宿主打包进插件。功能改动、依赖升级与上游同步均手动评估；不自动发布。
+如果已安装原版 Ask 或其他 transcript 折叠插件，先移除或停用对应扩展，避免重复注册工具或同时修改显示。同名工具不要同时加载。
 
-## 来源与致谢
+## 文档
 
-- **Ask User Question**：基于 [juicesharp/rpiv-mono / rpiv-ask-user-question](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) 2.15.0 定制，保留原作者信息与 [MIT 许可证](packages/ask-user-question/LICENSE)。
-- **Activity Summary**：参考 [luan/agents / pi-collapse-transcript](https://github.com/luan/agents/tree/main/harnesses/pi/agent/packages/pi-collapse-transcript) 的交互思路，为 regular TUI 独立实现。
+| 想做什么 | 从这里开始 |
+| --- | --- |
+| 调整问答快捷键、预览与配置 | [Ask User Question](packages/ask-user-question/README.md) |
+| 了解活动统计、展开和会话恢复 | [Activity Summary](packages/activity-summary/README.md) |
+| 修改代码、运行测试、更新预览 | [开发指南](docs/development.md) |
+| 报告问题或提出建议 | [GitHub Issues](https://github.com/bestdonger/pi-extensions/issues) |
+
+## 致谢
+
+- **Ask User Question** 基于 [juicesharp/rpiv-mono](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) 的同名插件定制，保留原作者信息与 [MIT 许可证](packages/ask-user-question/LICENSE)。
+- **Activity Summary** 参考 [luan/agents · pi-collapse-transcript](https://github.com/luan/agents/tree/main/harnesses/pi/agent/packages/pi-collapse-transcript) 的交互思路，为 regular TUI 独立实现。

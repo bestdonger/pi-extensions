@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="956" height="219" viewBox="0 0 956 219" role="img" aria-labelledby="title desc">
+<title id="title">Activity Summary · collapsed</title><desc id="desc">Actual Pi plugin component rendering with synthetic demo data. Not a desktop screenshot.</desc>
+<rect x="1" y="1" width="954" height="217" rx="12" fill="#171b23" stroke="#343d4d"/>
+<path d="M1 46H955" stroke="#343d4d"/>
+<circle cx="25" cy="24" r="5" fill="#61738a"/><circle cx="43" cy="24" r="5" fill="#61738a"/><circle cx="61" cy="24" r="5" fill="#61738a"/>
+<text x="478" y="29" text-anchor="middle" fill="#a8b6c8" font-family="system-ui,sans-serif" font-size="13">Activity Summary · collapsed</text>
+<g font-family="'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="14" xml:space="preserve"><rect x="28" y="59" width="900" height="23" fill="rgb(37,65,49)"/>
+<rect x="28" y="82" width="396" height="23" fill="rgb(37,65,49)"/>
+<text x="28" y="99" fill="rgb(222,224,225)" textLength="396" lengthAdjust="spacingAndGlyphs">&#160;&#160;▸&#160;Check&#160;configuration&#160;|&#160;2&#160;steps&#160;|&#160;tools&#160;1&#160;</text>
+<rect x="424" y="82" width="189" height="23" fill="rgb(37,65,49)"/>
+<text x="424" y="99" fill="rgb(126,136,142)" textLength="189" lengthAdjust="spacingAndGlyphs">(ok&#160;1,&#160;err&#160;0,&#160;open&#160;0)</text>
+<rect x="613" y="82" width="315" height="23" fill="rgb(37,65,49)"/>
+<rect x="28" y="105" width="900" height="23" fill="rgb(37,65,49)"/>
+<text x="28" y="168" fill="#d7dce2" textLength="900" lengthAdjust="spacingAndGlyphs">&#160;Configuration&#160;looks&#160;good.&#160;Ready&#160;for&#160;the&#160;next&#160;step.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</text></g></svg>

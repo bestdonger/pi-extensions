@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="956" height="610" viewBox="0 0 956 610" role="img" aria-labelledby="title desc">
+<title id="title">Ask User Question · options + preview</title><desc id="desc">Actual Pi plugin component rendering with synthetic demo data. Not a desktop screenshot.</desc>
+<rect x="1" y="1" width="954" height="608" rx="12" fill="#171b23" stroke="#343d4d"/>
+<path d="M1 46H955" stroke="#343d4d"/>
+<circle cx="25" cy="24" r="5" fill="#61738a"/><circle cx="43" cy="24" r="5" fill="#61738a"/><circle cx="61" cy="24" r="5" fill="#61738a"/>
+<text x="478" y="29" text-anchor="middle" fill="#a8b6c8" font-family="system-ui,sans-serif" font-size="13">Ask User Question · options + preview</text>
+<g font-family="'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="14" xml:space="preserve"><text x="28" y="76" fill="rgb(167,152,215)" textLength="900" lengthAdjust="spacingAndGlyphs">────────────────────────────────────────────────────────────────────────────────────────────────────</text>
+<text x="28" y="99" fill="#d7dce2" textLength="27" lengthAdjust="spacingAndGlyphs">&#160;←&#160;</text>
+<rect x="55" y="82" width="108" height="23" fill="rgb(33,59,73)"/>
+<text x="55" y="99" fill="rgb(222,224,225)" textLength="108" lengthAdjust="spacingAndGlyphs">&#160;□&#160;Approach&#160;</text>
+<text x="172" y="99" fill="rgb(157,165,169)" textLength="126" lengthAdjust="spacingAndGlyphs">&#160;□&#160;Validation&#160;</text>
+<text x="307" y="99" fill="rgb(126,136,142)" textLength="90" lengthAdjust="spacingAndGlyphs">&#160;✓&#160;Submit&#160;</text>
+<text x="397" y="99" fill="#d7dce2" textLength="18" lengthAdjust="spacingAndGlyphs">&#160;→</text>
+<text x="28" y="168" fill="#d7dce2" textLength="900" lengthAdjust="spacingAndGlyphs">&#160;How&#160;should&#160;we&#160;improve&#160;this&#160;project?&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</text>
+<text x="28" y="214" fill="rgb(167,152,215)" textLength="162" lengthAdjust="spacingAndGlyphs">❯&#160;1.&#160;Focused&#160;patch</text>
+<text x="532" y="214" fill="rgb(167,152,215)" textLength="396" lengthAdjust="spacingAndGlyphs">┌──────────────────────────────────────────┐</text>
+<text x="73" y="237" fill="rgb(157,165,169)" textLength="270" lengthAdjust="spacingAndGlyphs">Keep&#160;the&#160;change&#160;small&#160;and&#160;easy</text>
+<text x="532" y="237" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="550" y="237" fill="rgb(205,154,34)" textLength="36" lengthAdjust="spacingAndGlyphs">###&#160;</text>
+<text x="586" y="237" fill="rgb(205,154,34)" textLength="117" lengthAdjust="spacingAndGlyphs">Focused&#160;patch</text>
+<text x="919" y="237" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="73" y="260" fill="rgb(157,165,169)" textLength="90" lengthAdjust="spacingAndGlyphs">to&#160;review.</text>
+<text x="532" y="260" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="919" y="260" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="28" y="283" fill="#d7dce2" textLength="504" lengthAdjust="spacingAndGlyphs">&#160;&#160;2.&#160;Full&#160;redesign&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</text>
+<text x="532" y="283" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="568" y="283" fill="rgb(104,183,141)" textLength="81" lengthAdjust="spacingAndGlyphs">README.md</text>
+<text x="919" y="283" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="73" y="306" fill="rgb(157,165,169)" textLength="225" lengthAdjust="spacingAndGlyphs">Revisit&#160;the&#160;structure&#160;and</text>
+<text x="532" y="306" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="568" y="306" fill="rgb(104,183,141)" textLength="45" lengthAdjust="spacingAndGlyphs">docs/</text>
+<text x="919" y="306" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="73" y="329" fill="rgb(157,165,169)" textLength="162" lengthAdjust="spacingAndGlyphs">interaction&#160;model.</text>
+<text x="532" y="329" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="568" y="329" fill="rgb(104,183,141)" textLength="81" lengthAdjust="spacingAndGlyphs">&#160;&#160;assets/</text>
+<text x="919" y="329" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="28" y="352" fill="#d7dce2" textLength="504" lengthAdjust="spacingAndGlyphs">&#160;&#160;3.&#160;Explore&#160;first&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</text>
+<text x="532" y="352" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="568" y="352" fill="rgb(104,183,141)" textLength="144" lengthAdjust="spacingAndGlyphs">&#160;&#160;development.md</text>
+<text x="919" y="352" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="73" y="375" fill="rgb(157,165,169)" textLength="279" lengthAdjust="spacingAndGlyphs">Compare&#160;a&#160;few&#160;approaches&#160;before</text>
+<text x="532" y="375" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="919" y="375" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="73" y="398" fill="rgb(157,165,169)" textLength="72" lengthAdjust="spacingAndGlyphs">editing.</text>
+<text x="532" y="398" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="541" y="398" fill="#d7dce2" textLength="369" lengthAdjust="spacingAndGlyphs">&#160;Keep&#160;runtime&#160;behavior&#160;unchanged.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</text>
+<text x="919" y="398" fill="rgb(167,152,215)" textLength="9" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="28" y="421" fill="#d7dce2" textLength="504" lengthAdjust="spacingAndGlyphs">&#160;&#160;4.&#160;Type&#160;something.&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</text>
+<text x="532" y="421" fill="rgb(167,152,215)" textLength="396" lengthAdjust="spacingAndGlyphs">└──────────────────────────────────────────┘</text>
+<text x="532" y="467" fill="rgb(157,165,169)" textLength="243" lengthAdjust="spacingAndGlyphs">Notes:&#160;press&#160;n&#160;to&#160;add&#160;notes</text>
+<text x="28" y="513" fill="rgb(167,152,215)" textLength="900" lengthAdjust="spacingAndGlyphs">────────────────────────────────────────────────────────────────────────────────────────────────────</text>
+<text x="37" y="559" fill="rgb(126,136,142)" textLength="882" lengthAdjust="spacingAndGlyphs">Enter&#160;to&#160;select&#160;·&#160;↑/↓&#160;to&#160;navigate&#160;·&#160;n&#160;to&#160;add&#160;notes&#160;·&#160;Tab&#160;to&#160;switch&#160;questions&#160;·&#160;Esc&#160;to&#160;cancel&#160;·&#160;Ctr</text>
+<text x="919" y="559" fill="#d7dce2" textLength="9" lengthAdjust="spacingAndGlyphs">…</text></g></svg>
