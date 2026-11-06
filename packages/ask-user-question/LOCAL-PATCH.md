@@ -1,7 +1,8 @@
 # Local Ask patch
 
 Base: `@juicesharp/rpiv-ask-user-question` 2.15.0
-Local version: `2.15.0-local.rex.2`
+Maintained package: `@bestdonger/pi-ask-user-question` **0.1.0**
+Historical pre-repository version: `2.15.0-local.rex.2` (superseded; retained for provenance only)
 Implemented: 2026-11-05
 
 ## Loading and updates

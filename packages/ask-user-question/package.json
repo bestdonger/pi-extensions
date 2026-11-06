@@ -1,6 +1,7 @@
 {
-	"name": "@juicesharp/rpiv-ask-user-question",
-	"version": "2.15.0-local.rex.2",
+	"name": "@bestdonger/pi-ask-user-question",
+	"version": "0.1.0",
+	"private": true,
 	"description": "Pi extension. A structured questionnaire the model can put to you when it would otherwise guess, with typed options instead of free-form replies.",
 	"keywords": [
 		"pi-package",
@@ -16,15 +17,12 @@
 	"author": "juicesharp",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/juicesharp/rpiv-mono.git",
-		"directory": "packages/rpiv-ask-user-question"
+		"url": "git+https://github.com/bestdonger/pi-extensions.git",
+		"directory": "packages/ask-user-question"
 	},
-	"homepage": "https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question#readme",
+	"homepage": "https://github.com/bestdonger/pi-extensions/tree/main/packages/ask-user-question#readme",
 	"bugs": {
-		"url": "https://github.com/juicesharp/rpiv-mono/issues"
-	},
-	"publishConfig": {
-		"access": "public"
+		"url": "https://github.com/bestdonger/pi-extensions/issues"
 	},
 	"scripts": {
 		"test": "node --test tests/*.test.*"
