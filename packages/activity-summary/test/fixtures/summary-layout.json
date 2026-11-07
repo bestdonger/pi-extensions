@@ -1,0 +1,31 @@
+{
+  "source": "Independent expected compact header grammar; expanded header remains one row",
+  "stats": {
+    "theme": "bash: bun test",
+    "steps": 1,
+    "failed": 0,
+    "background": "toolSuccessBg"
+  },
+  "cases": [
+    {
+      "width": 1,
+      "text": "⌄"
+    },
+    {
+      "width": 2,
+      "text": "⌄"
+    },
+    {
+      "width": 8,
+      "text": "• bas… ⌄"
+    },
+    {
+      "width": 40,
+      "text": "• bash: bun test · 1 step ⌄"
+    },
+    {
+      "width": 80,
+      "text": "• bash: bun test · 1 step ⌄"
+    }
+  ]
+}

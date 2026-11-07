@@ -4,7 +4,7 @@
 
 **需要选择时，问清楚。执行过程中，看重点。**
 
-为 Pi 定制的结构化问答与终端活动摘要。
+为 Pi 定制的结构化问答、终端活动摘要与 Rex 消息导航。
 
 [插件预览](#插件预览) · [快速开始](#快速开始) · [开发指南](docs/development.md) · [反馈问题](https://github.com/bestdonger/pi-extensions/issues)
 
@@ -49,32 +49,43 @@
 
 <sub>以上为 Pi 1.5.0 下真实插件组件的渲染预览，使用离线示例数据；并非桌面截图。终端字体、主题和宽度会影响实际显示。</sub>
 
+### Rex Prompt Navigation
+
+在 Rex 中为真实用户消息恢复 prompt 标记，供 `⌘↑ / ⌘↓` 导航，同时保留 Pi 原生程序状态。仅在 Rex + Pi 1.5.0 regular TUI 中启用。
+
+[实现、兼容边界与验收说明 →](packages/rex-prompt-navigation/README.md)
+
 ## 快速开始
 
 > [!IMPORTANT]
-> 当前通过本地源码加载，尚未发布 npm 包。已验证 **Pi 1.5.0**；Activity Summary 仅用于 **regular TUI**，宿主升级后需重新验证。
-
-**1. 获取源码并准备 Ask 的运行依赖**
+> 从 GitHub 安装，尚未发布 npm 包。已验证 **Pi 1.5.0**；Activity Summary 和 Rex Prompt Navigation 用于 **regular TUI**，宿主升级后需重新验证。
 
 ```sh
-git clone https://github.com/bestdonger/pi-extensions.git ~/Projects/pi-extensions
-cd ~/Projects/pi-extensions/packages/ask-user-question
-npm install --no-save --package-lock=false --legacy-peer-deps --ignore-scripts @juicesharp/rpiv-config@2.15.0
+pi install git:github.com/bestdonger/pi-extensions
 ```
 
-**2. 按需安装插件**
+根包加载三个插件，Pi 自动安装 workspace 运行依赖；Ask 的配置依赖固定为 `@juicesharp/rpiv-config@2.15.0`，不安装第二份 Pi 宿主。
+
+在 Pi 中执行 `/reload`，或重新开启会话。以后只更新本仓库：
 
 ```sh
-# 结构化问答
-pi install "$HOME/Projects/pi-extensions/packages/ask-user-question"
-
-# 活动摘要（regular 模式）
-pi install "$HOME/Projects/pi-extensions/packages/activity-summary"
+pi update git:github.com/bestdonger/pi-extensions
 ```
 
-**3. 在 Pi 中执行 `/reload`，或重新开启会话。**
+从本地源码迁移时，先用 `pi remove <原本地包路径>` 移除旧的 Ask、Activity 包声明；若 Rex 通过 `~/.pi/agent/extensions/rex-prompt-navigation` 符号链接加载，确认目标后用 `unlink` 移除链接。源码目录保留。
 
 如果已安装原版 Ask 或其他 transcript 折叠插件，先移除或停用对应扩展，避免重复注册工具或同时修改显示。同名工具不要同时加载。
+
+只需部分插件时，用 `pi config` 筛选，或在个人设置中使用包过滤，例如只加载 Ask：
+
+```json
+{
+  "source": "git:github.com/bestdonger/pi-extensions",
+  "extensions": ["packages/ask-user-question/index.ts"]
+}
+```
+
+开发仍在本仓库进行，见[开发指南](docs/development.md)。
 
 ## 文档
 
@@ -82,6 +93,7 @@ pi install "$HOME/Projects/pi-extensions/packages/activity-summary"
 | --- | --- |
 | 调整问答快捷键、预览与配置 | [Ask User Question](packages/ask-user-question/README.md) |
 | 了解活动统计、展开和会话恢复 | [Activity Summary](packages/activity-summary/README.md) |
+| 使用 Rex 用户消息导航 | [Rex Prompt Navigation](packages/rex-prompt-navigation/README.md) |
 | 修改代码、运行测试、更新预览 | [开发指南](docs/development.md) |
 | 报告问题或提出建议 | [GitHub Issues](https://github.com/bestdonger/pi-extensions/issues) |
 

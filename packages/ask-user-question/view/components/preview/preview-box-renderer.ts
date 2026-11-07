@@ -49,10 +49,10 @@ export function renderBorderedBox(
 		out.push(`${colorFn("│")}${pad}${padded}${pad}${colorFn("│")}`);
 	}
 	if (hidden > 0) {
-		const indicator = ` ✂ ── ${hidden} lines hidden ── `;
-		const space = dashSpan - indicator.length;
-		const leftFill = "─".repeat(Math.max(0, Math.floor(space / 2)));
-		const rightFill = "─".repeat(Math.max(0, dashSpan - leftFill.length - indicator.length));
+		const indicator = truncateToWidth(` ✂ ── ${hidden} lines hidden ── `, dashSpan, "…");
+		const space = dashSpan - visibleWidth(indicator);
+		const leftFill = "─".repeat(Math.floor(space / 2));
+		const rightFill = "─".repeat(space - leftFill.length);
 		out.push(colorFn(`└${leftFill}${indicator}${rightFill}┘`));
 	} else {
 		out.push(colorFn(`└${"─".repeat(dashSpan)}┘`));

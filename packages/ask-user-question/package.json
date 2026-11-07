@@ -101,6 +101,6 @@
 		}
 	},
 	"dependencies": {
-		"@juicesharp/rpiv-config": "^2.15.0"
+		"@juicesharp/rpiv-config": "2.15.0"
 	}
 }

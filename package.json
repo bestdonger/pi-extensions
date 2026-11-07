@@ -1,0 +1,20 @@
+{
+  "name": "@bestdonger/pi-extensions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ask questionnaires, activity summaries and Rex prompt navigation for Pi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bestdonger/pi-extensions.git"
+  },
+  "scripts": { "test:package": "node --test scripts/package.test.mjs" },
+  "workspaces": ["packages/*"],
+  "pi": {
+    "extensions": [
+      "./packages/ask-user-question/index.ts",
+      "./packages/activity-summary/src/index.ts",
+      "./packages/rex-prompt-navigation/src/index.ts"
+    ]
+  }
+}

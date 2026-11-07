@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 const host = process.env.PI_PACKAGE_ROOT ?? '/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent';
 const { loadExtensions } = await import(`${host}/dist/core/extensions/loader.js`);
 const { validateToolArguments } = await import(`${host}/node_modules/@earendil-works/pi-ai/dist/utils/validation.js`);
-const { visibleWidth } = await import(`${host}/node_modules/@earendil-works/pi-tui/dist/index.js`);
+const { visibleWidth, stripTerminalSequences, CURSOR_MARKER } = await import(`${host}/node_modules/@earendil-works/pi-tui/dist/index.js`);
+const { ToolExecutionComponent } = await import(`${host}/dist/modes/interactive/components/tool-execution.js`);
 const { initTheme, getThemeByName } = await import(`${host}/dist/modes/interactive/theme/theme.js`);
 const { KeybindingsManager } = await import(`${host}/dist/core/keybindings.js`);
 const { ProgramStatusReporter } = await import(`${host}/dist/modes/interactive/program-status-reporter.js`);
@@ -22,7 +23,7 @@ const question = (i = 1) => ({ question: `Question ${i}?`, header: `Q${i}`, opti
 	{ label: 'Yes', description: 'Continue' }, { label: 'No', description: 'Cancel' },
 ] });
 
-async function fixture() {
+async function fixture({ columns = 100, rows = 40 } = {}) {
 	const bus = new EventEmitter(), events = [], shown = [], states = [];
 	bus.on('rpiv:ask-user:blocked', event => events.push(event));
 	const loaded = await loadExtensions([`${root}index.ts`], root, bus);
@@ -31,7 +32,7 @@ async function fixture() {
 	let capturing = false, current, fail = false;
 	const reporter = new ProgramStatusReporter(() => ({ setProgramStatus: s => states.push(s) }), () => 'test');
 	reporter.handleEvent({ type: 'agent_start' });
-	const tui = { terminal: { columns: 100, rows: 40 }, requestRender() {},
+	const tui = { terminal: { columns, rows }, requestRender() {},
 		getTopmostVisibleOverlay: () => capturing ? {} : undefined };
 	const ctx = { hasUI: true, mode: 'tui', cwd: root, isProjectTrusted: () => true,
 		ui: { notify() {}, custom(factory, options) {
@@ -55,7 +56,7 @@ async function fixture() {
 		} },
 	};
 	const execute = (id, signal, questions = [question()]) => tool.execute(id, { questions }, signal, () => {}, ctx);
-	return { bus, events, shown, states, tool, ctx, execute,
+	return { bus, events, shown, states, tool, ctx, tui, execute,
 		setOverlay: value => { capturing = value; }, setFailure: value => { fail = value; },
 		shutdown: async () => { for (const handler of ext.handlers.get('session_shutdown') ?? []) await handler({}, ctx); },
 	};
@@ -188,3 +189,90 @@ test('ten questions also work with RPC dialog primitives', async () => {
 	const result = await f.execute('rpc-ten', undefined, Array.from({ length: 10 }, (_, i) => question(i + 1)));
 	assert.equal(count, 10); assert.equal(result.details.answers.length, 10);
 });
+
+function assertFits(component, width) {
+	const lines = component.render(width);
+	assert.ok(lines.every(line => visibleWidth(line) <= width), `overflow at width ${width}`);
+	return lines;
+}
+
+test('long error receipts wrap inside the native tool shell after resize', async () => {
+	const f = await fixture(), args = { questions: [question()] };
+	for (const isError of [true, false]) {
+		const text = `Error: ${'加载失败🙂'.repeat(40)}`;
+		const result = { content: [{ type: 'text', text: `${text}\nPRIVATE_STACK` }],
+			details: { answers: [], cancelled: true, error: 'session_load_failed' }, isError };
+		const component = new ToolExecutionComponent('ask_user_question', 'error', args, {}, f.tool, f.tui, root);
+		component.updateResult(result);
+		for (const width of [80, 20, 40, 160]) {
+			const lines = assertFits(component, width).map(stripTerminalSequences);
+			assert.ok(lines.join('').replace(/\s/g, '').includes(text.replace(/\s/g, '')), 'error text lost');
+			assert.ok(!lines.join('').includes('PRIVATE_STACK'));
+		}
+	}
+});
+
+test('collapsed custom input ignores text, paste, editing and confirmation; expand and cancel still work', async t => {
+	const f = await fixture(); t.after(() => f.shutdown());
+	const result = f.execute('collapsed-input'); await until(() => f.shown.length === 1);
+	const component = f.shown[0].component;
+	component.handleInput('3'); component.handleInput('safe'); component.handleInput('\x1d');
+	for (const key of ['XYZ', '\x7f', '\x1b[D', '\x1b[200~PASTE\x1b[201~', '\r', '\x15']) component.handleInput(key);
+	component.handleInput('\x1d'); component.handleInput('!'); component.handleInput('\r');
+	assert.equal((await result).details.answers[0].answer, 'safe!');
+	const cancelled = f.execute('collapsed-cancel'); await until(() => f.shown.length === 2);
+	f.shown[1].component.handleInput('\x1d'); f.shown[1].component.handleInput('\x1b');
+	assert.equal((await cancelled).details.cancelled, true);
+});
+
+test('collapsed hint stays one row within the terminal width after resize', async t => {
+	const f = await fixture(); t.after(() => f.shutdown());
+	const result = f.execute('collapsed-width'); await until(() => f.shown.length === 1);
+	const component = f.shown[0].component; component.handleInput('\x1d');
+	for (const width of [80, 20, 1, 40, 80]) assert.equal(assertFits(component, width).length, 1);
+	assert.match(stripTerminalSequences(component.render(80)[0]), /Ctrl\+\] to expand/);
+	component.handleInput('\x1b'); await result;
+});
+
+for (const preview of ['中文预览🙂', Array.from({ length: 30 }, (_, i) => `line ${i} 中文🙂`).join('\n')]) {
+	test(`preview hints and hidden-line border fit narrow terminals (${preview.includes('\n') ? 'long' : 'short'})`, async t => {
+		const f = await fixture({ columns: 20, rows: 80 }); t.after(() => f.shutdown());
+		const q = question(); q.options = q.options.map(option => ({ ...option, preview }));
+		const result = f.execute('preview-width', undefined, [q]); await until(() => f.shown.length === 1);
+		const component = f.shown[0].component;
+		for (const width of [20, 40, 80, 160, 20]) {
+			f.tui.terminal.columns = width;
+			const lines = assertFits(component, width).map(stripTerminalSequences);
+			assert.ok(lines.some(line => /└.*┘/.test(line)), 'preview bottom border lost');
+			if (width === 80 && preview.includes('\n')) assert.match(lines.join('\n'), /\d+ lines hidden/);
+		}
+		component.handleInput('n'); component.handleInput('备注'); component.handleInput('\r');
+		assertFits(component, 20); // The saved-note hint is longer than the add-note hint.
+		component.handleInput('\x1b'); await result;
+	});
+}
+
+for (const variant of ['single', 'preview', 'multi']) {
+	test(`long ${variant} custom answer follows its cursor through editing and resize`, async t => {
+		const f = await fixture({ columns: 40, rows: 24 }); t.after(() => f.shutdown());
+		const q = question();
+		if (variant === 'preview') q.options = q.options.map(option => ({ ...option, preview: 'Preview' }));
+		if (variant === 'multi') q.multiSelect = true;
+		const result = f.execute('cursor', undefined, [q]); await until(() => f.shown.length === 1);
+		const component = f.shown[0].component, answer = `HEAD${'中文🙂abc'.repeat(100)}TAIL`;
+		component.handleInput('3');
+		for (const char of answer) component.handleInput(char);
+		const checkCursor = (width, text) => {
+			f.tui.terminal.columns = width;
+			const lines = assertFits(component, width);
+			assert.ok(lines.length <= 16, 'inline row budget exceeded');
+			assert.ok(lines.some(line => line.includes(CURSOR_MARKER)), 'cursor scrolled out of view');
+			assert.ok(lines.map(stripTerminalSequences).join('').replace(/\s/g, '').includes(text));
+		};
+		for (const width of [40, 20, 80, 40]) checkCursor(width, 'TAIL');
+		component.handleInput('\x01'); checkCursor(40, 'HEAD'); // Ctrl+A: beginning of logical line.
+		component.handleInput('\x05'); checkCursor(40, 'TAIL'); // Ctrl+E: end of logical line.
+		component.handleInput('\r');
+		assert.equal((await result).details.answers[0].answer, answer);
+	});
+}

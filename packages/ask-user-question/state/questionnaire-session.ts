@@ -1,5 +1,5 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import type { Editor, OverlayHandle, TUI } from "@earendil-works/pi-tui";
+import { type Editor, type OverlayHandle, type TUI, truncateToWidth } from "@earendil-works/pi-tui";
 import { COLLAPSE_KEY_OFF, formatKeySpecForDisplay } from "../config.ts";
 import type { QuestionData, QuestionnaireResult, QuestionParams } from "../tool/types.ts";
 import type { WrappingSelectItem } from "../view/components/wrapping-select.ts";
@@ -153,7 +153,7 @@ export class QuestionnaireSession {
 			this.collapseKey === COLLAPSE_KEY_OFF
 				? t("hint.cancel", HINT_PART_CANCEL)
 				: t("hint.expand_line", COLLAPSED_HINT_TEMPLATE).replace(KEY_PLACEHOLDER, collapseKeyDisplay);
-		return (_width: number): string[] => [theme.fg("dim", ` ${collapsedHintLine()} `)];
+		return (width: number): string[] => [theme.fg("dim", truncateToWidth(` ${collapsedHintLine()} `, width, "…"))];
 	}
 
 	dispatch(data: string): void {
@@ -238,7 +238,7 @@ export class QuestionnaireSession {
 	 * text/cursor state without a reducer round-trip.
 	 */
 	private handleIgnoreInline(data: string): void {
-		if (!this.state.inputMode) return;
+		if (this.state.collapsed || !this.state.inputMode) return;
 		this.inlineInput.handleInput(data);
 		this.viewAdapter.apply(this.state);
 	}

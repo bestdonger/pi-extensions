@@ -1,8 +1,8 @@
 import { test, expect } from 'bun:test';
 import { AssistantMessageComponent, getPackageDir, initTheme } from '@earendil-works/pi-coding-agent';
 import { Container, visibleWidth } from '@earendil-works/pi-tui';
-import { ActivityState, LEGACY_RECORD, RECORD } from '../src/state.ts';
-import { renderSummary, snapshot } from '../src/text.ts';
+import { ActivityState } from '../src/state.ts';
+import { format, renderSummary, snapshot, toolTheme } from '../src/text.ts';
 import { Projection } from '../src/bridge.ts';
 
 initTheme('dark', false);
@@ -12,9 +12,7 @@ const prose = (text = '正文') => ({ type: 'text', text });
 const tool = (id = 'outer') => ({ type: 'toolCall', id, name: 'codemode', arguments: {} });
 const message = (content: any[], stopReason = 'stop'): any => ({ role: 'assistant', content, stopReason, timestamp: 1000 });
 const entry = (id: string, content: any[], stopReason = 'stop') => ({ type: 'message', id, message: message(content, stopReason) });
-const saved = (data: any, customType = LEGACY_RECORD) => ({ type: 'custom', customType, data });
-const legacyGroup = (overrides = {}) => ({ anchors: ['a:0', 'a:1'], theme: '旧主题', models: 9,
-  tools: [['outer', 'ok'], ['opaque-nested-id', 'err']], ...overrides });
+const result = (id = 'outer', isError = false) => ({ type: 'message', id: `result-${id}`, message: { role: 'toolResult', toolCallId: id, toolName: 'codemode', isError } });
 
 function projection(s: ActivityState, m: any) {
   const source = new Container(); source.addChild(new AssistantMessageComponent(m));
@@ -28,9 +26,9 @@ function projection(s: ActivityState, m: any) {
 
 test('fullscreen steps count thinking blocks, not model requests, updates, results or nested calls', () => {
   for (const [content, expected] of [
-    [[thought('one'), thought('two'), tool()], '3'],
-    [[tool()], '1'],
-    [[thought(), tool()], '2'],
+    [[thought('one'), thought('two'), tool()], 3],
+    [[tool()], 1],
+    [[thought(), tool()], 2],
   ] as const) {
     const s = new ActivityState(), m = message([...content]);
     s.start(m); s.observe(m); s.observe(m);
@@ -38,8 +36,8 @@ test('fullscreen steps count thinking blocks, not model requests, updates, resul
     s.tool('deep', 'read', 'opaque-nested-id', 'err');
     s.tool('outer', 'codemode', undefined, 'ok');
     expect(snapshot(s.groups[0]).steps).toBe(expected);
-    expect(snapshot(s.groups[0]).tools).toBe('1');
-    expect(snapshot(s.groups[0]).err).toBe('0');
+    expect(s.groups[0].tools.size).toBe(1);
+    expect(snapshot(s.groups[0]).failed).toBe(0);
     s.start(message([prose()]));
     expect(snapshot(s.groups[0]).steps).toBe(expected);
     expect(snapshot(s.groups[0]).background).toBe('toolSuccessBg');
@@ -51,7 +49,7 @@ test('empty thinking has no row; its first nonempty delta counts exactly once', 
   try {
     s.start(m); expect(s.groups).toHaveLength(0); expect(p.view.render(80)).toEqual([]);
     m.content[0].thinking = 'Now thinking'; s.observe(m); s.observe(m);
-    expect(snapshot(s.groups[0]).steps).toBe('1');
+    expect(snapshot(s.groups[0]).steps).toBe(1);
     expect(p.view.render(80)).toHaveLength(1);
   } finally { p.view.dispose(); }
 });
@@ -61,19 +59,19 @@ test('top-level IDs are not inferred from slash spelling, nested-only events cre
   s.tool('unrelated', 'read', 'not-yet-seen', 'err'); expect(s.groups).toHaveLength(0);
   s.start(message([tool('provider/id')]));
   s.tool('provider/id', 'codemode', undefined, 'ok'); s.settle(false);
-  expect(snapshot(s.groups[0])).toMatchObject({ steps: '1', tools: '1', ok: '1', background: 'toolSuccessBg' });
+  expect(snapshot(s.groups[0])).toMatchObject({ steps: 1, failed: 0, background: 'toolSuccessBg' });
 });
 
 test('thinking-prose-thinking in one response has one step in EACH segment', () => {
   const s = new ActivityState(); s.start(message([thought('first'), prose(), thought('second')]));
-  expect(s.groups.map(g => snapshot(g).steps)).toEqual(['1', '1']);
+  expect(s.groups.map(g => snapshot(g).steps)).toEqual([1, 1]);
   expect(s.groups.map(g => snapshot(g).background)).toEqual(['toolSuccessBg', 'toolPendingBg']);
 });
 
 test('failure wins over active thinking and open tools; success waits for the segment boundary', () => {
   const s = new ActivityState(); s.start(message([thought(), tool('a'), tool('b')]));
   s.tool('a', 'codemode', undefined, 'err');
-  expect(snapshot(s.groups[0])).toMatchObject({ err: '1', open: '1', background: 'toolErrorBg' });
+  expect(snapshot(s.groups[0])).toMatchObject({ failed: 1, background: 'toolErrorBg' });
   s.settle(true); expect(snapshot(s.groups[0]).background).toBe('toolErrorBg');
   const ok = new ActivityState(); ok.start(message([tool()])); ok.tool('outer', 'codemode', undefined, 'ok');
   expect(snapshot(ok.groups[0]).background).toBe('toolPendingBg');
@@ -93,7 +91,7 @@ for (const [stop, abort, bg] of [
 
 test('open tools remain pending even when the segment/run is closed', () => {
   const s = new ActivityState(); s.start(message([tool()], 'toolUse')); s.settle(false);
-  expect(snapshot(s.groups[0])).toMatchObject({ open: '1', background: 'toolPendingBg' });
+  expect(snapshot(s.groups[0])).toMatchObject({ steps: 1, background: 'toolPendingBg' });
 });
 
 test('a later model failure does not recolor an earlier normally ended segment', () => {
@@ -144,9 +142,9 @@ test('background and counters share throttling, final flush, and frozen snapshot
     expect(p.view.render(80)).toEqual(first);
     p.setTime(250); const failed = p.view.render(80);
     expect(failed[0]).toContain(getThemeByName('dark')!.getBgAnsi('toolErrorBg'));
-    expect(Bun.stripANSI(failed[0])).toContain('err 1');
+    expect(Bun.stripANSI(failed[0])).toContain('1 failed');
     s.settle(false); p.setTime(260); const frozen = p.view.render(80);
-    s.groups[0].completion = 'complete'; s.groups[0].tools.set('outer', 'ok'); p.setTime(1000);
+    s.groups[0].completion = 'complete'; s.tool('outer', 'codemode', undefined, 'ok'); p.setTime(1000);
     expect(p.view.render(80)).toEqual(frozen);
   } finally { p.view.dispose(); }
 });
@@ -168,7 +166,7 @@ test('a final completion flush can change only the background inside the 250ms i
   try {
     const first = p.view.render(80); s.settle(false); p.setTime(10);
     const last = p.view.render(80);
-    expect(last).not.toEqual(first); expect(Bun.stripANSI(last[0])).toBe(Bun.stripANSI(first[0]));
+    expect(last).not.toEqual(first); expect(Bun.stripANSI(last[0])).toBe(Bun.stripANSI(first[0]).replace('●', '•'));
     expect(last[0]).toContain(getThemeByName('dark')!.getBgAnsi('toolSuccessBg'));
     p.setTheme('light'); const light = p.view.render(80);
     expect(light[0]).toContain(getThemeByName('light')!.getBgAnsi('toolSuccessBg'));
@@ -176,99 +174,104 @@ test('a final completion flush can change only the background inside the 250ms i
   } finally { p.view.dispose(); }
 });
 
-test('trusted v1 migrates steps from raw blocks and filters nested results without rewriting history', () => {
-  const branch = [entry('a', [thought(), tool()]), saved({ version: 1, groups: [legacyGroup()] })];
+test('history counts original entries without any custom record, including failure results', () => {
+  const branch = [entry('a', [thought(), tool()], 'toolUse'), result('outer', true), entry('b', [prose()])];
   const before = JSON.stringify(branch), s = new ActivityState(); s.restore(branch);
-  expect(snapshot(s.groups[0])).toMatchObject({ steps: '2', tools: '1', ok: '1', err: '0', open: '0', background: 'toolSuccessBg' });
-  expect(s.pendingRecord().groups).toEqual([]); expect(JSON.stringify(branch)).toBe(before);
+  expect(snapshot(s.groups[0])).toEqual({ theme: 'codemode', steps: 2, failed: 1, background: 'toolErrorBg' });
+  expect(JSON.stringify(branch)).toBe(before);
 });
 
-test('v1 empty thinking anchors can be verified and dropped, never counted as a step', () => {
-  const s = new ActivityState();
-  s.restore([entry('a', [thought(' '), thought(), tool()]), saved({ groups: [legacyGroup({ anchors: ['a:0', 'a:1', 'a:2'] })] })]);
-  expect(snapshot(s.groups[0])).toMatchObject({ steps: '2', tools: '1' });
-});
-
-test('v1 metadata is not proof that a tool-only segment completed normally', () => {
-  const s = new ActivityState();
-  s.restore([entry('a', [thought(), tool()], 'toolUse'), saved({ groups: [legacyGroup()] })]);
-  expect(snapshot(s.groups[0])).toMatchObject({ steps: '2', ok: '1', background: 'toolPendingBg' });
-});
-
-test('trusted v1 restores explicit model failure and interruption evidence', () => {
-  for (const [notice, background] of [['模型请求失败', 'toolErrorBg'], ['操作已中断', 'toolPendingBg']] as const) {
-    const s = new ActivityState();
-    s.restore([entry('a', [thought(), tool()]), saved({ groups: [legacyGroup()], notices: [['a', notice]] })]);
-    expect(snapshot(s.groups[0])).toMatchObject({ steps: '2', background });
-    expect(s.byId.get('a')?.notice).toBe(notice);
-  }
-});
-
-test('unrecorded interrupted history stays unknown rather than assuming EOF means success', () => {
-  const s = new ActivityState(); s.restore([entry('a', [thought(), tool()], 'aborted')]);
-  expect(snapshot(s.groups[0])).toMatchObject({ steps: '—', tools: '—', background: 'toolPendingBg' });
-  expect(s.save()).toEqual([]);
-});
-
-test('partial, missing, duplicate or inconsistent metadata anchors are not trusted', () => {
-  for (const overrides of [
-    { anchors: ['a:0'] }, { anchors: ['missing:0', 'a:1'] }, { anchors: ['a:0', 'a:0'] },
-    { tools: [['opaque-nested-id', 'ok']] }, { tools: [['outer', 'ok'], ['outer', 'err']] },
+test('all old/invalid custom records are ignored, including their artificial run boundaries', () => {
+  const raw = [entry('a', [thought(), tool()], 'toolUse'), result(), entry('b', [thought('latest')])];
+  const clean = new ActivityState(); clean.restore(raw);
+  for (const customType of ['pi-activity-summary/v1', 'pi-activity-summary/v2']) for (const data of [
+    null, { groups: 'invalid' }, { version: 2, groups: [{ anchors: ['a:0'], theme: 'FAKE', thoughts: 999,
+      tools: [['outer', 'err']], completion: 'error' }], notices: [['a', '模型请求失败']] },
   ]) {
-    const s = new ActivityState(); s.restore([entry('a', [thought(), tool()]), saved({ groups: [legacyGroup(overrides)] })]);
-    expect(snapshot(s.groups[0])).toMatchObject({ steps: '—', background: 'toolPendingBg' });
+    const branch = [raw[0], { type: 'custom', customType, data }, ...raw.slice(1)];
+    const before = JSON.stringify(branch), s = new ActivityState(); s.restore(branch);
+    expect(s.groups.map(snapshot)).toEqual(clean.groups.map(snapshot));
+    expect(s.groups).toHaveLength(1);
+    expect(snapshot(s.groups[0])).toMatchObject({ theme: 'latest', steps: 3, failed: 0, background: 'toolSuccessBg' });
+    expect(s.byId.get('a')?.notice).toBeUndefined();
+    expect(JSON.stringify(branch)).toBe(before);
   }
 });
 
-test('v2 records persist completion and new counters exactly, without trusting mismatched thought counts', () => {
-  const m = message([thought(), tool()], 'error'), s = new ActivityState();
-  s.start(m); s.bind('a'); s.tool('outer', 'codemode', undefined, 'ok'); s.settle(false);
-  const record = s.pendingRecord(), restored = new ActivityState();
-  restored.restore([entry('a', m.content, m.stopReason), saved(record, RECORD)]);
-  expect(snapshot(restored.groups[0])).toEqual(snapshot(s.groups[0]));
-  expect(restored.pendingRecord().groups).toEqual([]);
-  const bad = structuredClone(record); bad.groups[0].thoughts++;
-  const invalid = new ActivityState(); invalid.restore([entry('a', m.content), saved(bad, RECORD)]);
-  expect(snapshot(invalid.groups[0]).steps).toBe('—');
+test('interrupted and truncated history has concrete counts, but remains pending', () => {
+  for (const stop of ['aborted', 'length', 'toolUse']) {
+    const s = new ActivityState(); s.restore([entry('a', [thought(' '), thought(), tool()], stop), result()]);
+    expect(snapshot(s.groups[0])).toMatchObject({ steps: 2, failed: 0, background: 'toolPendingBg' });
+    expect(format(snapshot(s.groups[0]), 80)).not.toContain('—');
+  }
 });
 
-test('known final model failure remains red even when history counters are unknown', () => {
+test('raw terminal failure restores one concise notice and error background without failed tools', () => {
   const s = new ActivityState(); s.restore([entry('a', [thought()], 'error')]);
-  expect(snapshot(s.groups[0])).toMatchObject({ steps: '—', background: 'toolErrorBg' });
+  expect(snapshot(s.groups[0])).toMatchObject({ steps: 1, failed: 0, background: 'toolErrorBg' });
   expect(s.byId.get('a')?.notice).toBe('模型请求失败');
+  expect(format(snapshot(s.groups[0]), 80)).not.toContain('failed');
 });
 
-test('known top-level error results remain red with unknown counters; nested records do not count', () => {
+test('nested or undeclared raw results never create entries or overwrite an outer result', () => {
   const s = new ActivityState(); s.restore([
-    entry('a', [thought(), tool()], 'toolUse'),
-    { type: 'message', id: 'result', message: { role: 'toolResult', toolCallId: 'outer', isError: true } },
+    entry('a', [tool()], 'toolUse'), result('inner', true),
+    { ...result('outer', true), message: { ...result('outer', true).message, parentToolCallId: 'parent' } },
+    result(), entry('b', [prose()]),
   ]);
-  expect(snapshot(s.groups[0])).toMatchObject({ steps: '—', tools: '—', background: 'toolErrorBg' });
-  const nested = new ActivityState(); nested.restore([
-    entry('a', [tool()], 'toolUse'),
-    { type: 'message', id: 'result', message: { role: 'toolResult', toolCallId: 'inner', isError: true } },
-  ]);
-  expect(snapshot(nested.groups[0]).background).toBe('toolPendingBg');
+  expect(snapshot(s.groups[0])).toMatchObject({ steps: 1, failed: 0, background: 'toolSuccessBg' });
 });
 
-test('an earlier failed model attempt is not mistaken for a final failure during history replay', () => {
+test('retried model errors do not survive a successful continuation in history', () => {
   const s = new ActivityState(); s.restore([entry('a', [thought('retry')], 'error'), entry('b', [thought('recovered')])]);
-  expect(snapshot(s.groups[0])).toMatchObject({ steps: '—', background: 'toolPendingBg' });
-  expect(s.byId.get('b')?.notice).toBe('');
+  expect(snapshot(s.groups[0])).toMatchObject({ theme: 'recovered', steps: 2, failed: 0, background: 'toolSuccessBg' });
+  expect(s.byId.get('a')?.notice).toBeUndefined(); expect(s.byId.get('b')?.notice).toBe('');
 });
 
-test('v1 nested tool names cannot override the reconstructed top-level title', () => {
-  const s = new ActivityState(); s.restore([entry('a', [tool()], 'toolUse'), saved({ groups: [legacyGroup({
-    anchors: ['a:0'], theme: 'read', tools: [['outer', 'open'], ['inner', 'open']],
-  })] })]);
-  expect(snapshot(s.groups[0])).toMatchObject({ theme: 'codemode', steps: '1', tools: '1', background: 'toolPendingBg' });
-});
-
-test('metadata contradicting a raw terminal result is untrusted and cannot hide the failure', () => {
+test('reused call IDs in different original entries count separately and keep their own outcomes', () => {
   const s = new ActivityState(); s.restore([
-    entry('a', [thought(), tool()], 'toolUse'),
-    { type: 'message', id: 'result', message: { role: 'toolResult', toolCallId: 'outer', isError: true } },
-    saved({ groups: [legacyGroup()] }),
+    entry('a', [tool()], 'toolUse'), result('outer', true),
+    entry('b', [{ ...tool(), name: 'bash', arguments: { command: 'bun test' } }], 'toolUse'),
+    result(), entry('c', [prose()]),
   ]);
-  expect(snapshot(s.groups[0])).toMatchObject({ steps: '—', background: 'toolErrorBg' });
+  expect(snapshot(s.groups[0])).toEqual({ theme: 'bash: bun test', steps: 2, failed: 1, background: 'toolErrorBg' });
+  expect([...s.groups[0].tools.values()]).toEqual(['err', 'ok']);
+});
+
+test('latest activity wins; out-of-order parallel results cannot roll the title back', () => {
+  const s = new ActivityState();
+  const m = message([thought('earlier'), { ...tool('a'), name: 'read', arguments: { path: '/tmp/config' } },
+    { ...tool('b'), name: 'bash', arguments: { command: 'bun test' } }], 'toolUse');
+  s.start(m); s.observe(m);
+  s.tool('b', 'bash', undefined, 'ok'); s.tool('a', 'read', undefined, 'err');
+  expect(snapshot(s.groups[0])).toMatchObject({ theme: 'bash: bun test', steps: 3, failed: 1 });
+  s.start(message([thought('latest thinking')]));
+  expect(snapshot(s.groups[0])).toMatchObject({ theme: 'latest thinking', steps: 4 });
+});
+
+test('raw tool results alone update live state without requiring execution-end events', () => {
+  const s = new ActivityState(); s.start(message([tool()], 'toolUse'));
+  s.result(result('outer', true).message); s.result(result('outer', true).message);
+  expect(snapshot(s.groups[0])).toMatchObject({ steps: 1, failed: 1, background: 'toolErrorBg' });
+});
+
+test('compact grammar: singular/plural, optional failures, status and trailing disclosure', () => {
+  const base = { theme: 'bash: bun test', steps: 1, failed: 0, background: 'toolSuccessBg' as const };
+  expect(format(base, 80)).toBe('• bash: bun test · 1 step ›');
+  expect(format({ ...base, steps: 6 }, 80)).toBe('• bash: bun test · 6 steps ›');
+  expect(format({ ...base, steps: 6, failed: 1, background: 'toolErrorBg' }, 80)).toBe('× bash: bun test · 6 steps · 1 failed ›');
+  expect(format(base, 80, x => x, true)).toBe('• bash: bun test · 1 step ⌄');
+  for (const width of [1, 2, 3, 8, 24, 80]) {
+    const line = format(base, width);
+    expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+    expect(line).toEndWith('›');
+    expect(line).not.toMatch(/tools|ok |err |open |0 failed/);
+  }
+});
+
+test('tool argument title fallback is short and sanitized, not arbitrary result text', () => {
+  expect(toolTheme('bash', { command: 'bun test' })).toBe('bash: bun test');
+  expect(toolTheme('read', { path: '/tmp/config' })).toBe('read: /tmp/config');
+  expect(toolTheme('custom', { body: 'PRIVATE BODY' })).toBe('custom');
+  expect(toolTheme('bash', { command: '\u001b]52;c;SECRET\u0007echo ok' })).toBe('bash: echo ok');
 });

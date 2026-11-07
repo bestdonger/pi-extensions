@@ -1,10 +1,10 @@
 import { test, expect } from 'bun:test';
 import { Container, TuiMainScreen } from '@earendil-works/pi-tui';
 import { UserMessageComponent, initTheme } from '@earendil-works/pi-coding-agent';
-import { ActivityState, RECORD } from '../src/state.ts';
+import { ActivityState } from '../src/state.ts';
 import { mount } from '../src/bridge.ts';
 initTheme('dark', false);
-test('abort before assistant start attaches one notice to user and restores by stable ID', () => {
+test('abort before assistant start stays live-only when no original assistant record exists', () => {
   const s = new ActivityState(); s.userBoundary(); s.settle(true, 'user-id');
   const source = new Container(), doc = new Container(); doc.addChild(new Container()); doc.addChild(new Container()); doc.addChild(source);
   source.addChild(new UserMessageComponent('question'));
@@ -16,8 +16,8 @@ test('abort before assistant start attaches one notice to user and restores by s
     s.userBoundary(); source.addChild(new UserMessageComponent('next question'));
     expect(doc.render(80).join('\n').indexOf('操作已中断')).toBeLessThan(doc.render(80).join('\n').indexOf('next question'));
     const restored = new ActivityState();
-    restored.restore([{ type: 'message', id: 'user-id', message: { role: 'user', content: 'question' } },
-      { type: 'custom', customType: RECORD, data: { version: 2, groups: [], notices: s.saveNotices() } }]);
-    expect(restored.byId.get('user-id')?.notice).toBe('操作已中断');
+    restored.restore([{ type: 'message', id: 'user-id', message: { role: 'user', content: 'question' } }]);
+    expect(restored.byId.get('user-id')?.notice).toBeUndefined();
+    expect(restored.groups).toHaveLength(0);
   } finally { release(); }
 });

@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test';
 import { AssistantMessageComponent, SessionManager, initTheme } from '@earendil-works/pi-coding-agent';
 import { Container } from '@earendil-works/pi-tui';
-import { ActivityState, RECORD } from '../src/state.ts';
+import { ActivityState } from '../src/state.ts';
 import { Projection } from '../src/bridge.ts';
 import { snapshot, thoughtTheme } from '../src/text.ts';
 import extension from '../src/index.ts';
@@ -15,29 +15,23 @@ test('silent failed attempts and pure prose add no steps to another segment', ()
   const s = new ActivityState();
   s.start(msg([], 'error')); s.bind('failed');
   s.start(msg([thought()])); s.bind('retry');
-  expect(snapshot(s.groups[0]).steps).toBe('1');
+  expect(snapshot(s.groups[0]).steps).toBe(1);
   s.settle(false);
   s.start(msg([text()])); s.bind('pure');
   s.start(msg([thought('next')])); s.bind('next');
   expect(s.groups).toHaveLength(2); expect(s.groups[1].thoughts).toBe(1);
 });
 
-test('metadata is incremental and records preserve adjacent settled activity boundaries', () => {
+test('raw terminal messages preserve adjacent settled activity boundaries', () => {
   const sm = SessionManager.inMemory('/tmp'), s = new ActivityState();
-  let saved = 0;
   for (let i = 0; i < 5; i++) {
     const m = msg([thought(`group ${i}`)]);
     s.start(m); s.bind(sm.appendMessage(m)); s.settle(false);
-    const record = s.pendingRecord();
-    expect(record.groups).toHaveLength(1);
-    saved += record.groups.length;
-    sm.appendCustomEntry(RECORD, record); s.committed(record);
-    expect(s.pendingRecord().groups).toEqual([]);
+    expect(sm.getBranch().every(entry => entry.type === 'message')).toBe(true);
   }
-  expect(saved).toBe(5);
+  expect(s.groups).toHaveLength(5);
   const restored = new ActivityState(); restored.restore(sm.getBranch());
   expect(restored.groups.map(snapshot)).toEqual(s.groups.map(snapshot));
-  expect(restored.pendingRecord().groups).toEqual([]);
   expect(sm.buildSessionContext().messages).toHaveLength(5);
 });
 
@@ -74,7 +68,7 @@ test('final flush never overrides the offscreen freeze', () => {
     tui.previousViewportTop = 1;
     s.tool('one', 'probe', undefined, 'ok'); s.settle(false);
     expect(p.render(80)).toEqual(initial);
-    expect(snapshot(s.groups[0]).ok).toBe('1');
+    expect(snapshot(s.groups[0]).background).toBe('toolSuccessBg');
   } finally { p.dispose(); }
 });
 

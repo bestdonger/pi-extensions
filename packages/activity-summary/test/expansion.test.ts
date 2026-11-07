@@ -73,10 +73,10 @@ test('collapsed renders no payload; expanded restores native thinking/tool conte
     const assistant = f.assistant(m), tool = f.tool(); f.state.settle(false);
     let calls = 0; const nativeRender = tool.render.bind(tool); tool.render = width => { calls++; return nativeRender(width); };
     expect(f.plain()).not.toContain('THOUGHT_BODY'); expect(f.plain()).not.toContain('TOOL_BODY'); expect(calls).toBe(0);
-    expect(f.plain()).toContain('▸');
+    expect(f.plain()).toContain('›');
     f.setExpanded(true);
-    const open = f.plain(); expect(open).toContain('▾'); expect(open).toContain('THOUGHT_BODY'); expect(open).toContain('file.ts');
-    expect(open.match(/TOOL_BODY/g)).toHaveLength(1); expect(open.match(/steps/g)).toHaveLength(1);
+    const open = f.plain(); expect(open).toContain('⌄'); expect(open).toContain('THOUGHT_BODY'); expect(open).toContain('file.ts');
+    expect(open.match(/TOOL_BODY/g)).toHaveLength(1); expect(open.match(/\bstep(?:s)?\b/g)).toHaveLength(1);
     expect(f.render()[0]).toBe('');
     for (const line of f.render().slice(1)) expectPainted(line, getThemeByName('dark'), 'toolSuccessBg', 90);
     expect(f.render().join('')).not.toContain('\x1b]133;');
@@ -96,7 +96,7 @@ test('prose stays outside grouped backgrounds and tools/thinking retain their or
     const plain = f.plain();
     const positions = ['FIRST_THOUGHT', 'MIDDLE_PROSE', 'FAILED_TOOL_BODY', 'SECOND_THOUGHT', 'FINAL_PROSE'].map(s => plain.indexOf(s));
     expect(positions.every(n => n >= 0)).toBe(true); expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    expect(plain.match(/steps/g)).toHaveLength(2);
+    expect(plain.match(/\bstep(?:s)?\b/g)).toHaveLength(2);
     const rows = f.render();
     for (const marker of ['MIDDLE_PROSE', 'FINAL_PROSE']) expect(rows.find(row => row.includes(marker))).not.toMatch(/\x1b\[48[;:]/);
     expectPainted(rows.find(row => row.includes('FIRST_THOUGHT'))!, getThemeByName('dark'), 'toolSuccessBg', 90);
@@ -114,7 +114,7 @@ test('same-message tool/thinking/tool payloads follow their original block order
     expect(text.indexOf('RESULT_A')).toBeLessThan(text.indexOf('BETWEEN_THOUGHT'));
     expect(text.indexOf('BETWEEN_THOUGHT')).toBeLessThan(text.indexOf('RESULT_B'));
     expect(text.match(/RESULT_A/g)).toHaveLength(1); expect(text.match(/RESULT_B/g)).toHaveLength(1);
-    expect(text).toContain('3 steps | tools 2');
+    expect(text).toContain('3 steps');
   } finally { f.release(); }
 });
 
@@ -127,7 +127,7 @@ test('same-message tool/prose/tool streaming separates surfaces without moving p
     const middle = f.plain(); expect(middle).toContain('LIVE_MIDDLE'); expect(middle).not.toContain('RESULT_B');
     m.content.push(call('b')); f.state.observe(m); native.updateContent(m, true); f.tool('b', 'RESULT_B'); f.state.settle(false);
     const text = f.plain();
-    expect(text.match(/steps/g)).toHaveLength(2);
+    expect(text.match(/\bstep(?:s)?\b/g)).toHaveLength(2);
     expect(text.indexOf('RESULT_A')).toBeLessThan(text.indexOf('LIVE_MIDDLE'));
     expect(text.indexOf('LIVE_MIDDLE')).toBeLessThan(text.indexOf('RESULT_B'));
     expect(f.render().find(row => row.includes('LIVE_MIDDLE'))).not.toMatch(/\x1b\[48[;:]/);
@@ -155,7 +155,7 @@ test('a native tool without an assistant declaration still expands exactly once'
     const native = new ToolExecutionComponent('orphan', 'orphan-id', {}, {}, undefined, f.tui, '/tmp');
     native.updateResult({ content: [prose('ORPHAN_PAYLOAD')], isError: false }); f.source.addChild(native);
     f.setExpanded(true); const text = f.plain();
-    expect(text).toContain('— steps'); expect(text.match(/ORPHAN_PAYLOAD/g)).toHaveLength(1);
+    expect(text).toContain('1 step'); expect(text.match(/ORPHAN_PAYLOAD/g)).toHaveLength(1);
     f.setExpanded(false); expect(f.plain()).not.toContain('ORPHAN_PAYLOAD');
   } finally { f.release(); }
 });
@@ -171,6 +171,27 @@ test('custom native renderers receive expanded=true and are not replaced with pl
     f.state.settle(false); f.setExpanded(true);
     expect(f.plain()).toContain('CUSTOM_CALL'); expect(f.plain()).toContain('FULL_CUSTOM_RESULT'); expect(seen.at(-1)).toBe(true);
     expect(f.plain()).not.toContain('ignored by custom renderer');
+  } finally { f.release(); }
+});
+
+test('latest tool uses a sanitized semantic renderer label, with safe argument fallback', () => {
+  const f = fixture(); let throws = false;
+  try {
+    f.assistant(message([thought('older thinking'), call()]));
+    f.tool('t', 'ignored', false, {
+      renderResult() {
+        const result = new Container();
+        result.addChild(Object.assign(new Text('PRIVATE_RESULT_BODY', 0, 0), {
+          getActivityLabel() { if (throws) throw new Error('unsupported label'); return '\x1b]52;c;SECRET\x07\x1b[32m✓ semantic command\x1b[0m'; },
+        }));
+        return result;
+      },
+    });
+    f.state.settle(false);
+    expect(f.plain()).toContain('• semantic command · 2 steps ›');
+    expect(f.plain()).not.toContain('SECRET'); expect(f.plain()).not.toContain('PRIVATE_RESULT_BODY');
+    throws = true; f.setExpanded(true); f.plain(); f.setExpanded(false);
+    expect(f.plain()).toContain('probe: file.ts · 2 steps ›');
   } finally { f.release(); }
 });
 
@@ -192,7 +213,7 @@ test('thinking Markdown transformers keep metadata and do not rerun for unrelate
   } finally { f.release(); }
 });
 
-test('legacy unknown counters can expand original content without inventing statistics', () => {
+test('history without plugin metadata expands original content with rebuilt counts', () => {
   const f = fixture();
   try {
     const m = message([thought(), call()]);
@@ -200,7 +221,7 @@ test('legacy unknown counters can expand original content without inventing stat
     f.source.addChild(new AssistantMessageComponent(m, true, undefined, '', 1, [], 'old'));
     const native = new ToolExecutionComponent('probe', 't', {}, {}, undefined, f.tui, '/tmp');
     native.updateResult({ content: [prose('OLD_TOOL_BODY')], isError: false }); f.source.addChild(native);
-    f.setExpanded(true); expect(f.plain()).toContain('— steps'); expect(f.plain()).toContain('THOUGHT_BODY'); expect(f.plain()).toContain('OLD_TOOL_BODY');
+    f.setExpanded(true); expect(f.plain()).toContain('2 steps'); expect(f.plain()).toContain('THOUGHT_BODY'); expect(f.plain()).toContain('OLD_TOOL_BODY');
   } finally { f.release(); }
 });
 
@@ -280,7 +301,7 @@ test('manual toggle refreshes frozen counters and payload; later automatic updat
     f.setExpanded(true); const old = f.render(); (f.tui as any).previousViewportTop = old.length;
     native.updateResult({ content: [prose('NEW_FAILURE')], isError: true }); f.state.tool('t', 'probe', undefined, 'err');
     expect(f.render()).toEqual(old);
-    f.setExpanded(false); expect(f.plain()).toContain('err 1');
+    f.setExpanded(false); expect(f.plain()).toContain('1 failed');
     f.setExpanded(true); expect(f.plain()).toContain('NEW_FAILURE'); expect(f.plain()).not.toContain('OLD_RESULT');
   } finally { f.release(); }
 });
@@ -334,7 +355,7 @@ test('real regular terminal: manual global reflow is allowed; automatic offscree
     draw(); expect(f.render()).toEqual(before); expect(f.terminal.output).not.toContain('\x1b[3J');
     expect(f.terminal.output).not.toContain('DELAYED_FAILURE');
     f.setExpanded(false); draw(); f.setExpanded(true); draw();
-    expect(f.plain()).toContain('DELAYED_FAILURE'); expect(f.plain()).toContain('err 1');
+    expect(f.plain()).toContain('DELAYED_FAILURE'); expect(f.plain()).toContain('1 failed');
   } finally { f.release(); }
 });
 

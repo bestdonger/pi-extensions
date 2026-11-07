@@ -204,11 +204,14 @@ export class DialogView implements StatefulView<DialogProps> {
 		// below — that would draw the bottom border and hint twice (#260).
 		const windowRows = Math.min(availableMiddle, middleRows);
 		const rowsBeforeBody = pinHeading ? 0 : headingHeight;
-		// Scroll-to-focus target in middle-region rows. While the notes editor is open it is the
-		// keyboard's target, so the window follows it rather than the focused option (#317).
-		const focusedRange = state.notesVisible
-			? this.notesFocusRange(natural.slice(top, top + middleRows), strategy, width, windowRows)
+		// Keep a focused editor's whole block when it fits; otherwise follow its cursor.
+		// Notes take precedence over the option/custom-answer row while open.
+		let focusedRange: [number, number] | undefined = state.notesVisible
+			? [middleRows - (this.rowsAroundBody(strategy, width) - 1), middleRows]
 			: offsetRange(strategy.focusedItemRowRange(width, state), rowsBeforeBody);
+		if ((state.notesVisible || state.inputMode) && focusedRange) {
+			focusedRange = this.editorFocusRange(natural.slice(top, top + middleRows), focusedRange, windowRows);
+		}
 		const scrollStart = computeScrollStart(focusedRange, 0, windowRows, middleRows);
 		const scrollableMiddle = natural.slice(top + scrollStart, top + scrollStart + windowRows);
 		const focusedInWindow = offsetRange(focusedRange, -scrollStart);
@@ -231,23 +234,16 @@ export class DialogView implements StatefulView<DialogProps> {
 		return 1 + strategy.midRows(this.liveProps.state).reduce((rows, c) => rows + c.render(width).length, 0);
 	}
 
-	/**
-	 * Focus range, in middle-region rows, for the open notes editor. Mid rows end the middle
-	 * region, so the whole editor block (header included) is kept in view when it fits; a taller
-	 * one is followed by the row carrying the editor's cursor marker, so typed text and an IME
-	 * composition window stay on screen (#317).
-	 */
-	private notesFocusRange(
+	/** Follow the cursor in an overflowing notes or custom-answer editor, including after resize. */
+	private editorFocusRange(
 		middle: readonly string[],
-		strategy: TabContentStrategy,
-		width: number,
+		range: [number, number],
 		windowRows: number,
 	): [number, number] {
-		const notesRows = this.rowsAroundBody(strategy, width) - 1;
-		const notesStart = middle.length - notesRows;
-		if (notesRows <= windowRows) return [notesStart, middle.length];
-		const cursorRow = middle.findIndex((line, i) => i >= notesStart && line.includes(CURSOR_MARKER));
-		return cursorRow === -1 ? [notesStart, middle.length] : [cursorRow, cursorRow + 1];
+		const [start, end] = range;
+		if (end - start <= windowRows) return range;
+		const cursorRow = middle.findIndex((line, i) => i >= start && i < end && line.includes(CURSOR_MARKER));
+		return cursorRow === -1 ? range : [cursorRow, cursorRow + 1];
 	}
 
 	/**

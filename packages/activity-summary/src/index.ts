@@ -1,5 +1,5 @@
 import { VERSION, type ExtensionAPI, type ExtensionContext } from '@earendil-works/pi-coding-agent';
-import { ActivityState, RECORD } from './state.ts';
+import { ActivityState } from './state.ts';
 import { mount } from './bridge.ts';
 
 export default function activitySummary(pi: ExtensionAPI) {
@@ -40,9 +40,11 @@ export default function activitySummary(pi: ExtensionAPI) {
   });
   pi.on('message_update', event => { if (enabled) state.observe(event.message); });
   pi.on('message_end', event => {
-    if (enabled && event.message.role === 'assistant') state.observe(event.message);
+    if (!enabled) return;
+    if (event.message.role === 'assistant') state.observe(event.message);
+    else if (event.message.role === 'toolResult') state.result(event.message);
   });
-  pi.on('tool_execution_start', e => { if (enabled) state.tool(e.toolCallId, e.toolName, e.parentToolCallId); });
+  pi.on('tool_execution_start', e => { if (enabled) state.tool(e.toolCallId, e.toolName, e.parentToolCallId, undefined, e.args); });
   pi.on('tool_execution_end', e => {
     if (enabled) state.tool(e.toolCallId, e.toolName, e.parentToolCallId, e.isError ? 'err' : 'ok');
   });
@@ -51,11 +53,6 @@ export default function activitySummary(pi: ExtensionAPI) {
     if (!enabled) return;
     const fallback = !state.message ? ctx.sessionManager.getBranch().findLast(entry => entry.type === 'message' && entry.message.role === 'user') : undefined;
     state.settle(e.aborted, fallback?.id);
-    const record = state.pendingRecord();
-    if (record.groups.length || record.notices.length) {
-      pi.appendEntry(RECORD, record);
-      state.committed(record);
-    }
     requestRender?.();
   });
   pi.on('session_tree', (_e, ctx) => { if (enabled) { restore(ctx); requestRender?.(); } });

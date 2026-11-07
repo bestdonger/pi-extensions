@@ -8,7 +8,8 @@
 pi-extensions/
 ├── packages/
 │   ├── ask-user-question/     # 结构化问答
-│   └── activity-summary/     # regular TUI 活动摘要
+│   ├── activity-summary/     # regular TUI 活动摘要
+│   └── rex-prompt-navigation/ # Rex 用户消息导航
 ├── docs/
 │   └── assets/               # 真实组件渲染预览
 └── scripts/
@@ -17,11 +18,13 @@ pi-extensions/
 
 每个插件有独立的 `package.json`、依赖、测试和版本。Ask 使用 `@bestdonger/pi-ask-user-question`，从 `0.1.0` 开始独立版本管理；Activity Summary 使用 `pi-activity-summary`。当前均不发布 npm。
 
-Pi 加载本地源码目录，修改后执行 `/reload` 或重开会话。`pi update --extensions` 不会覆盖本地路径包；同步本仓库使用 Git，拉取前先检查工作区。
+正常使用从 GitHub 安装根包，根 `package.json` 通过 workspaces 安装依赖并声明三个扩展入口。各插件继续独立维护；不要在 `~/.pi/agent/git/` 的托管副本中开发。
+
+开发时移除 GitHub 包声明，改用 `pi install /absolute/path/pi-extensions` 加载工作区，修改后执行 `/reload` 或重开会话。不要同时加载 GitHub 和本地副本。`pi update --extensions` 不会覆盖本地路径包；同步开发仓库使用 Git，拉取前先检查工作区。
 
 ## 环境与依赖
 
-已验证宿主为 **Pi 1.5.0**。需要 Node.js（支持直接执行 TypeScript 的版本）和 Bun。Ask 的普通运行依赖安装方式见[快速开始](../README.md#快速开始)；Activity Summary 没有额外运行依赖。
+已验证宿主为 **Pi 1.5.0**。需要 Node.js（支持直接执行 TypeScript 的版本）和 Bun。GitHub 安装会自动准备依赖；本地开发在根目录运行 `npm install --legacy-peer-deps --ignore-scripts`，使用已提交的锁文件，不自动安装宿主 peers。Activity Summary 和 Rex Prompt Navigation 没有额外运行依赖。
 
 Pi 的宿主模块通过 peer dependencies 提供，不要给插件打包另一份宿主。测试时 Activity Summary 需要能直接解析宿主模块。本机采用软链接：
 
@@ -50,8 +53,10 @@ ln -s "$PI_PACKAGE_ROOT/node_modules/@types/node" \
 ## 测试
 
 ```sh
+npm run test:package
 (cd packages/ask-user-question && npm test)
 (cd packages/activity-summary && bun test)
+(cd packages/rex-prompt-navigation && bun test)
 ```
 
 Ask 集成测试读取 `PI_PACKAGE_ROOT`，默认是 Homebrew 的 Pi 路径。Activity Summary 部分测试仍依赖本机路径及已安装的参考插件；在其他机器运行前需检查 `test/loader.test.ts`。当前没有跨平台 CI，不将本机通过等同于所有环境均可用。
@@ -79,8 +84,8 @@ bun scripts/render-previews.mjs
 
 ```json
 {
-  "source": "/absolute/path/pi-extensions/packages/activity-summary",
-  "extensions": []
+  "source": "git:github.com/bestdonger/pi-extensions",
+  "extensions": ["!packages/activity-summary/src/index.ts"]
 }
 ```
 

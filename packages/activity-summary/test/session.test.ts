@@ -5,10 +5,11 @@ import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager
 import { AssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { Container, TuiMainScreen } from '@earendil-works/pi-tui';
 import extension from '../src/index.ts';
-import { RECORD } from '../src/state.ts';
+import { ActivityState } from '../src/state.ts';
+import { snapshot } from '../src/text.ts';
 
 // Real AgentSession + extension dispatch + nested tool execution; transport is entirely in process.
-test('real session ordering persists top-level blocked/parallel calls, excludes nested calls and model continuation', async () => {
+test('real session live/history parity: blocked/parallel tools, nested isolation, zero plugin records', async () => {
   const dir = mkdtempSync('/tmp/pi-activity-test-');
   let session: any;
   let calls = 0;
@@ -69,18 +70,15 @@ test('real session ordering persists top-level blocked/parallel calls, excludes 
     session.setActiveToolsByName(['outer', 'inner', 'blocked']);
     await session.prompt('fixture');
     expect(warnings).toEqual([]); expect(calls).toBe(2);
-    const records = sm.getBranch().filter((e: any) => e.type === 'custom' && e.customType === RECORD) as any[];
-    expect(records).toHaveLength(1);
-    const groups = records[0].data.groups;
-    expect(groups).toHaveLength(1); expect(groups[0].thoughts).toBe(1);
-    expect(groups[0].tools).toHaveLength(2);
-    expect(groups[0].tools.filter(([, outcome]: any[]) => outcome === 'err')).toHaveLength(1);
-    expect(groups[0].completion).toBe('complete');
-    expect(groups[0]).not.toHaveProperty('models');
-    expect(groups[0].anchors.every((a: string) => /^[^:]+:\d+$/.test(a))).toBe(true);
+    const live = (doc.children[2] as any).state() as ActivityState;
+    const restored = new ActivityState(); restored.restore(sm.getBranch());
+    expect(live.groups).toHaveLength(1);
+    expect(snapshot(live.groups[0])).toEqual({ theme: 'blocked', steps: 3, failed: 1, background: 'toolErrorBg' });
+    expect(restored.groups.map(snapshot)).toEqual(live.groups.map(snapshot));
+    expect(sm.getBranch().filter((e: any) => e.type === 'custom')).toEqual([]);
     expect(events.indexOf('tool_execution_start:outer')).toBeGreaterThan(events.indexOf('message_end:assistant'));
     expect(events.at(-1)).toBe('agent_settled:');
-    expect(sm.buildSessionContext().messages.some((m: any) => m.customType === RECORD)).toBe(false);
+    expect(sm.buildSessionContext().messages.some((m: any) => m.customType?.startsWith('pi-activity-summary/'))).toBe(false);
     expect(JSON.stringify(sm.getBranch())).toContain('private outer result');
   } finally { session?.dispose(); rmSync(dir, { recursive: true, force: true }); }
 }, 20000);

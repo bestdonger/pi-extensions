@@ -46,7 +46,9 @@ export function renderAskResult(
 ): Component {
 	const details = isQuestionnaireResult(result.details) ? result.details : undefined;
 	if (options.isError || details?.error) {
-		return new WidthLines(() => [theme.fg("error", `✗ ${firstTextLine(result)}`)]);
+		return new WidthLines((width) =>
+			wrapTextWithAnsi(`✗ ${firstTextLine(result)}`, width).map((line) => theme.fg("error", line)),
+		);
 	}
 	if (!details) return new WidthLines(() => [theme.fg("success", "✓")]);
 	if (details.cancelled) {

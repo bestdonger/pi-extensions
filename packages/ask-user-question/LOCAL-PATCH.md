@@ -13,10 +13,12 @@ Maintenance home: `https://github.com/bestdonger/pi-extensions`, under
 The old `~/.pi/agent/local-packages/rpiv-ask-user-question` directory is retained
 only as a migration backup; make future changes in this repository.
 
-`~/.pi/agent/settings.json` loads this directory, not the upstream npm source.
-Pi's package updates do not fetch or overwrite local-path packages. Other plugins
-are unchanged. `@juicesharp/rpiv-config` 2.15.0 is copied into this package's
-node_modules, not symlinked to the managed npm store.
+Normal installation uses `pi install git:github.com/bestdonger/pi-extensions`.
+The root workspace manifest declares all three extension entries and installs
+`@juicesharp/rpiv-config` pinned to 2.15.0 using the committed lockfile. Host modules
+remain peers. Remove old local package declarations before switching sources.
+Use `pi update git:github.com/bestdonger/pi-extensions` to update the managed copy;
+keep development in this repository, not in Pi's managed git checkout.
 
 Do not casually run npm install/update here: dependency changes and upstream
 upgrades must be reviewed manually. Pi/TypeBox APIs still come from the host, so
@@ -71,15 +73,30 @@ The visible dialog alone controls Pi's root blocked state.
 - The tab bar keeps the active tab and Submit visible in narrow terminals with
   horizontal windowing, preserving the existing two-row layout contract.
 
+## 4. Review fixes: width, collapsed input, and cursor scrolling
+
+- Error receipts wrap at render time; collapsed and preview hints clip to their
+  available columns. The hidden-line count fits inside the preview's bottom border.
+- Collapsed questionnaires ignore text, paste, editing and confirmation instead of
+  forwarding ignored keys into the hidden custom-answer editor. Expand and cancel
+  still work.
+- Overflowing custom answers follow the cursor, including single-select, multi-select
+  and preview questions. Short editor blocks still stay visible as a whole; notes
+  keep priority while their editor is open.
+
 ## Validation
 
-`npm test` runs 24 passing tests as of this patch:
+`npm test` runs 32 passing tests as of this patch:
 - FIFO/concurrency, queued/active/pre-load cancellation, shutdown and failure cleanup;
 - capturing-overlay wait/dismiss/cancel and noncapturing HUD compatibility;
 - installed Pi loader, real QuestionnaireSession rendering/keyboard input,
   ProgramStatusReporter transitions and external answers;
 - schema/runtime boundaries 0, 1, 4, 5, 10, 11; option bounds unchanged;
-- all ten questions and Submit at widths 20/40/80/160; ten RPC answers.
+- all ten questions and Submit at widths 20/40/80/160; ten RPC answers;
+- long Unicode error receipts in the native tool shell, preview hints/borders and
+  collapsed hints after resize; collapsed input immutability and cancellation;
+- long Unicode custom answers with visible cursor, start/end movement and resize in
+  single-select, multi-select and preview layouts; submitted text remains intact.
 
 The integration tests intentionally use the installed Pi package (default
 `/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent`, override with

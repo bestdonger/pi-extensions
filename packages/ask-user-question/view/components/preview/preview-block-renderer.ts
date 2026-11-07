@@ -1,5 +1,5 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import type { MarkdownTheme } from "@earendil-works/pi-tui";
+import { type MarkdownTheme, truncateToWidth } from "@earendil-works/pi-tui";
 import { DEFAULT_NOTES_KEY, formatNotesKeyForDisplay } from "../../../config.ts";
 import { t } from "../../../state/i18n-bridge.ts";
 import type { QuestionData } from "../../../tool/types.ts";
@@ -156,6 +156,6 @@ export class PreviewBlockRenderer {
 
 		const text =
 			affordance !== "none" && this.cache.has(optionIndex) ? affordanceText(affordance, this.notesKey) : "";
-		return [...boxedLines, "", text ? this.theme.fg("muted", text) : ""];
+		return [...boxedLines, "", text ? this.theme.fg("muted", truncateToWidth(text, width, "…")) : ""];
 	}
 }

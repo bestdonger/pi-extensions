@@ -1,7 +1,7 @@
 import { AssistantMessageComponent, ToolExecutionComponent, type Theme } from '@earendil-works/pi-coding-agent';
 import { type Component, type TUI, stripTerminalSequences, truncateToWidth } from '@earendil-works/pi-tui';
-import { ActivityState, type Group } from './state.ts';
-import { format, renderHeader, snapshot, type Stats, thoughtTheme } from './text.ts';
+import { ActivityState, newGroup, type Group, type Tool } from './state.ts';
+import { clean, format, renderHeader, snapshot, type Stats, thoughtTheme, toolTheme } from './text.ts';
 import { paintActivityLines } from './surface.ts';
 
 // Deliberately isolated Pi 1.5 private ABI. No prototype patches or source-node writes.
@@ -10,6 +10,19 @@ const container = (v: any): v is Container => v && typeof v.render === 'function
 interface Row {
   stats: Stats; at: number; frozen: boolean; position?: number; headerHeight: number;
   body?: { width: number; lines: string[] };
+}
+// Optional semantic title exposed by custom/native activity renderers. Never use
+// arbitrary result text as a heading, and tolerate unsupported renderer shapes.
+function activityLabel(root: any, seen = new Set<object>()): string | undefined {
+  if (!root || typeof root !== 'object' || seen.has(root) || seen.size >= 64) return;
+  seen.add(root);
+  try {
+    const label = root.getActivityLabel?.();
+    if (typeof label === 'string' && label.trim()) return truncateToWidth(clean(label).replace(/^[^\p{L}\p{N}$]+/u, ''), 240);
+    if (Array.isArray(root.children)) for (const child of root.children) {
+      const label = activityLabel(child, seen); if (label) return label;
+    }
+  } catch { /* Custom renderers need not implement the optional title protocol. */ }
 }
 interface BlockView { view: AssistantMessageComponent; metadata: unknown[]; text?: string; streaming?: boolean; }
 interface Section { group: Group; body: Component[]; }
@@ -21,7 +34,7 @@ interface Expansion {
 export class Projection implements Component {
   private rows = new Map<Group, Row>();
   private blocks = new WeakMap<object, Map<number, BlockView>>();
-  private unknown = new WeakMap<object, Map<number, Group>>();
+  private fallbackEntries = new WeakMap<object, Map<number, { group: Group; tool?: Tool }>>();
   private timer?: ReturnType<typeof setTimeout>;
   private disposed = false;
   private lastState?: ActivityState;
@@ -30,7 +43,7 @@ export class Projection implements Component {
   constructor(readonly source: Container, readonly state: () => ActivityState, readonly tui: TUI,
     readonly prefix: (width: number) => number, readonly dim: (s: string) => string,
     readonly supported: () => boolean, readonly fail: () => void, readonly now = () => performance.now(),
-    readonly renderHeader: (stats: Stats, width: number, expanded: boolean) => string | string[] = (s, w) => format(s, w, dim),
+    readonly renderHeader: (stats: Stats, width: number, expanded: boolean) => string | string[] = (s, w, expanded) => format(s, w, dim, expanded),
     readonly expansion?: Expansion, readonly separateBlocks = false) {}
   invalidate() {
     // Host resize/theme invalidation may rebuild body layout, but preserves the
@@ -69,7 +82,7 @@ export class Projection implements Component {
     const state = this.state();
     const expanded = this.expansion?.isExpanded() ?? false;
     if (state !== this.lastState) {
-      this.rows.clear(); this.blocks = new WeakMap(); this.unknown = new WeakMap();
+      this.rows.clear(); this.blocks = new WeakMap(); this.fallbackEntries = new WeakMap();
       this.orphanAnchors = new WeakMap(); this.lastState = state;
     }
     if (expanded !== this.lastExpanded) {
@@ -82,20 +95,26 @@ export class Projection implements Component {
     // payload at the original toolCall block so interleaved thinking/prose/tools
     // keep message/block order rather than batching all thinking before all tools.
     const nativeTools = new Map<Component, Map<number, ToolExecutionComponent>>();
-    if (expanded) {
-      const declarations = new Map<string, { node: Component; index: number }>();
+    {
+      const declarations = new Map<string, { node: Component; index: number }[]>();
       for (const node of this.source.children) {
         if (node instanceof AssistantMessageComponent) {
+          // Native tool rows belong to the preceding assistant batch. Duplicate
+          // IDs can leave unmatched declarations; never carry those into a new batch.
+          declarations.clear();
           const content = Reflect.get(node, 'lastMessage')?.content;
           if (Array.isArray(content)) for (const [index, block] of content.entries()) {
-            if (block.type === 'toolCall') declarations.set(block.id, { node, index });
+            if (block.type === 'toolCall') {
+              const queue = declarations.get(block.id) ?? [];
+              queue.push({ node, index }); declarations.set(block.id, queue);
+            }
           }
         } else if (node instanceof ToolExecutionComponent) {
-          const id = Reflect.get(node, 'toolCallId'), declaration = declarations.get(id);
+          const id = Reflect.get(node, 'toolCallId'), declaration = declarations.get(id)?.shift();
           if (!declaration) continue;
           let slots = nativeTools.get(declaration.node);
           if (!slots) { slots = new Map(); nativeTools.set(declaration.node, slots); }
-          slots.set(declaration.index, node); declarations.delete(id);
+          slots.set(declaration.index, node);
         }
       }
     }
@@ -111,17 +130,28 @@ export class Projection implements Component {
     for (const notice of state.orphanNotices) {
       if (!this.orphanAnchors.has(notice)) this.orphanAnchors.set(notice, this.source.children.at(-1));
     }
-    let legacy: Group | undefined;
-    const fallback = (node: object, index: number, theme: string): Group => {
-      let slots = this.unknown.get(node);
-      if (!slots) { slots = new Map(); this.unknown.set(node, slots); }
-      let g = slots.get(index);
-      if (!g) {
-        g = legacy ?? { id: -1, theme: theme || '处理中', thought: false, thoughts: 0, tools: new Map(), unknown: true, closed: true, completion: 'unknown', anchors: [] };
-        slots.set(index, g);
+    let fallbackGroup: Group | undefined;
+    const fallback = (node: object, index: number, block: any, native?: any): Group => {
+      let slots = this.fallbackEntries.get(node);
+      if (!slots) { slots = new Map(); this.fallbackEntries.set(node, slots); }
+      let entry = slots.get(index);
+      if (!entry) {
+        const group = { ...newGroup(), completion: 'unknown' as const };
+        const tool = block.type === 'thinking' ? undefined : { id: block.id, title: toolTheme(block.name, block.arguments) };
+        entry = { group, tool }; slots.set(index, entry);
       }
-      legacy = g;
-      return g;
+      // Cache identities, not old partitions: unknown entries may become known.
+      if (!fallbackGroup) {
+        fallbackGroup = entry.group; fallbackGroup.thoughts = 0; fallbackGroup.tools.clear();
+      }
+      const group = fallbackGroup, { tool } = entry;
+      if (tool) {
+        tool.title = toolTheme(block.name, block.arguments);
+        group.tools.set(tool, native?.result && !native.isPartial ? native.result.isError ? 'err' : 'ok' : 'open');
+      } else group.thoughts++;
+      group.theme = tool ? activityLabel(native?.resultRendererComponent) || tool.title : thoughtTheme(block.thinking);
+      group.latestTool = tool; fallbackGroup = group;
+      return group;
     };
     for (const component of this.source.children) {
       if (component instanceof AssistantMessageComponent) {
@@ -135,12 +165,17 @@ export class Projection implements Component {
         for (const [index, block] of message.content.entries()) {
           if (block.type === 'thinking' || block.type === 'toolCall') {
             if (block.type === 'thinking' && !block.thinking.trim()) continue;
-            const g = m?.groups.get(index) ?? state.toolGroups.get(block.id) ?? fallback(node, index, block.type === 'thinking' ? thoughtTheme(block.thinking) : block.name);
-            const payload = expanded ? block.type === 'thinking' ? this.blockView(node, message, index) : nativeTools.get(node)?.get(index) : undefined;
+            const native = nativeTools.get(node)?.get(index);
+            const known = m?.groups.get(index);
+            if (known) fallbackGroup = undefined;
+            const g = known ?? fallback(node, index, block, native);
+            if (native && g.latestTool && g.latestTool === m?.tools.get(index))
+              g.theme = activityLabel(Reflect.get(native, 'resultRendererComponent')) || g.latestTool.title;
+            const payload = expanded && block.type === 'thinking' ? this.blockView(node, message, index) : native;
             collect(g, payload && !placedTools.has(payload) ? payload : undefined);
-            if (payload instanceof ToolExecutionComponent) placedTools.add(payload);
+            if (native) placedTools.add(native);
           } else if (block.type === 'text' && block.text.trim()) {
-            legacy = undefined;
+            fallbackGroup = undefined;
             append(this.blockView(node, message, index).render(width));
           }
         }
@@ -150,7 +185,11 @@ export class Projection implements Component {
         // Reuse the real renderer (including custom tools). Pi itself owns its
         // expanded flag via Ctrl+O/getToolsExpanded; do not mutate the source node.
         // An orphan/no-message tool still has a display location here.
-        if (!placedTools.has(component)) collect(state.toolGroups.get(node.toolCallId) ?? fallback(node, 0, node.toolName), component);
+        if (!placedTools.has(component)) {
+          const known = state.toolGroups.get(node.toolCallId);
+          if (known) fallbackGroup = undefined;
+          collect(known ?? fallback(node, 0, { id: node.toolCallId, name: node.toolName, arguments: node.args }, node), component);
+        }
       } else {
         // Keep final model diagnostics concise even when tool details are open.
         if (component.constructor.name === 'ThemedText') {
@@ -164,7 +203,7 @@ export class Projection implements Component {
           }
         }
         const rendered = component.render(width);
-        if (rendered.some(s => stripTerminalSequences(s).trim())) legacy = undefined;
+        if (rendered.some(s => stripTerminalSequences(s).trim())) fallbackGroup = undefined;
         append(rendered);
         const notice = state.byId.get(Reflect.get(component, 'messageId'))?.notice;
         if (notice) append([truncateToWidth(notice, width)]);

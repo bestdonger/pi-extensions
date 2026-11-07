@@ -17,7 +17,7 @@ class CapturedTerminal extends ProcessTerminal {
 const thought = (title = 'Inspect') => ({ type: 'thinking', thinking: `**${title}**\n\nPRIVATE_THINKING_DETAIL` });
 const prose = (text: string) => ({ type: 'text', text });
 const tool = (id: string, name: string) => ({ type: 'toolCall', id, name, arguments: {} });
-async function scenario(responses: any[], retry = false) {
+async function scenario(responses: any[], retry = false, continuation: 'none' | 'empty' | 'hidden' = 'none') {
   const root = await mkdtemp(join(tmpdir(), 'pi-parent-acceptance-'));
   let captured: any, context: any, calls = 0, current: any;
   const terminal = new CapturedTerminal();
@@ -43,7 +43,7 @@ async function scenario(responses: any[], retry = false) {
           await Bun.sleep(30); snapshots.push(rendered());
         }
         Object.assign(msg, response);
-        if (response.stopReason === 'error') stream.push({ type: 'error', reason: 'error', error: msg });
+        if (response.stopReason === 'error' || response.stopReason === 'aborted') stream.push({ type: 'error', reason: response.stopReason, error: msg });
         else stream.push({ type: 'done', reason: response.stopReason, message: msg });
         stream.end();
       });
@@ -52,6 +52,14 @@ async function scenario(responses: any[], retry = false) {
   });
   const settingsManager = SettingsManager.inMemory({ tuiMode: 'regular', theme: 'dark', quietStartup: true, showCacheMissNotices: false, hideThinkingBlock: true, compaction: { enabled: false }, retry: { enabled: retry, maxRetries: 1, baseDelayMs: 1 }, packages: [] });
   const resourceLoader = new DefaultResourceLoader({ cwd: root, agentDir: root, settingsManager, noExtensions: true, noSkills: true, noThemes: true, noContextFiles: true, noPromptTemplates: true, extensionFactories: [extension, (pi: any) => {
+    let continued = false;
+    pi.on('turn_end', (event: any) => {
+      if (continuation === 'none' || continued) return;
+      continued = true;
+      return { continue: true, entries: continuation === 'hidden'
+        ? [...event.entries, { type: 'custom_message', customType: 'fixture-continuation', content: 'Continue reasoning.', display: false }]
+        : event.entries };
+    });
     pi.on('session_start', (_e: any, ctx: any) => {
       context = ctx;
       ctx.ui.setWidget('capture', (tui: any) => { captured = tui; return { render: () => [], invalidate() {} }; });
@@ -73,7 +81,7 @@ async function scenario(responses: any[], retry = false) {
     expanded: () => context.ui.getToolsExpanded(),
     key: (data: string) => terminal.input?.(data),
     dialog: () => context.ui.input('Modal fixture'),
-    prompt: () => current.runtime.session.prompt('acceptance fixture'),
+    prompt: (text = 'acceptance fixture') => current.runtime.session.prompt(text),
     queue: () => current.runtime.session.followUp('queued fixture'),
     idle: () => current.runtime.session.waitForIdle(),
     reload: () => current.mode.handleReloadCommand(),
@@ -92,20 +100,20 @@ test('real InteractiveMode: prose streams, nested errors hidden, settled summari
     expect(before).not.toContain('PRIVATE_TOOL_FAILURE'); expect(before).not.toContain('PRIVATE_OUTER_RESULT'); expect(before).not.toContain('PRIVATE_INNER_RESULT');
     expect(before).toContain('Checking configuration.'); expect(before).toContain('Final answer.');
     expect(s.snapshots.some(x => x.includes('Checking configuration.') && !x.includes('Final answer.'))).toBe(true);
-    const summaries = before.split('\n').filter(x => x.includes(' steps | tools '));
-    const colored = s.rawRendered().split('\n').filter((x: string) => x.includes(' steps | tools '));
+    const summaries = before.split('\n').filter(x => /\b\d+ steps?\b/.test(x));
+    const colored = s.rawRendered().split('\n').filter((x: string) => /\b\d+ steps?\b/.test(x));
     expect(summaries).toHaveLength(2);
-    expect(summaries[0]).toContain('1 steps | tools 0 (ok 0, err 0, open 0)');
-    expect(summaries[1]).toContain('3 steps | tools 2 (ok 1, err 1, open 0)');
+    expect(summaries[0]).toContain('1 step');
+    expect(summaries[1]).toContain('3 steps · 1 failed');
     expect(summaries[0]).toContain('Inspect'); expect(summaries[1]).toContain('Verify');
     expect(s.terminal.output).not.toContain('PRIVATE_TOOL_FAILURE');
     await s.reload();
     expect(s.rendered()).not.toContain('Reload failed');
-    expect(s.rendered().split('\n').filter(x => x.includes(' steps | tools '))).toEqual(summaries);
-    expect(s.rawRendered().split('\n').filter((x: string) => x.includes(' steps | tools '))).toEqual(colored);
+    expect(s.rendered().split('\n').filter(x => /\b\d+ steps?\b/.test(x))).toEqual(summaries);
+    expect(s.rawRendered().split('\n').filter((x: string) => /\b\d+ steps?\b/.test(x))).toEqual(colored);
     await s.resume();
-    expect(s.rendered().split('\n').filter(x => x.includes(' steps | tools '))).toEqual(summaries);
-    expect(s.rawRendered().split('\n').filter((x: string) => x.includes(' steps | tools '))).toEqual(colored);
+    expect(s.rendered().split('\n').filter(x => /\b\d+ steps?\b/.test(x))).toEqual(summaries);
+    expect(s.rawRendered().split('\n').filter((x: string) => /\b\d+ steps?\b/.test(x))).toEqual(colored);
   } finally { await s.close(); }
 }, 30000);
 test('real InteractiveMode: queued follow-up has independent groups before the final idle boundary', async () => {
@@ -121,12 +129,122 @@ test('real InteractiveMode: queued follow-up has independent groups before the f
     const text = s.rendered();
     expect(s.calls()).toBe(3);
     expect(text).toContain('First answer.'); expect(text).toContain('Follow-up answer.');
-    const rows = text.split('\n').filter(x => x.includes(' steps | tools '));
+    const rows = text.split('\n').filter(x => /\b\d+ steps?\b/.test(x));
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toContain('2 steps | tools 1 (ok 1, err 0, open 0)');
-    expect(rows[1]).toContain('1 steps | tools 0 (ok 0, err 0, open 0)');
+    expect(rows[0]).toContain('2 steps');
+    expect(rows[1]).toContain('1 step');
     const records = s.manager.getBranch().filter((e: any) => e.type === 'custom' && e.customType === 'pi-activity-summary/v2') as any[];
-    expect(records.reduce((n, r) => n + r.data.groups.length, 0)).toBe(2);
+    expect(records).toEqual([]);
+    await s.reload();
+    expect(s.rendered().split('\n').filter(x => /\b\d+ steps?\b/.test(x))).toEqual(rows);
+  } finally { await s.close(); }
+}, 30000);
+
+test('real InteractiveMode: a queued follow-up preserves the preceding truncation before and after reload', async () => {
+  const s = await scenario([
+    { content: [thought('Truncated response')], stopReason: 'length' },
+    { content: [thought('Follow-up'), prose('Follow-up answer.')], stopReason: 'stop' },
+  ]);
+  try {
+    const run = s.prompt(); await Bun.sleep(40);
+    expect(await s.queue()).toBe('queued');
+    await run; await s.idle();
+    expect(s.calls()).toBe(2);
+    const rows = () => s.rawRendered().split('\n').filter(x => /steps?|模型输出已达长度上限/.test(x));
+    const before = rows();
+    expect(before).toHaveLength(3);
+    expect(Bun.stripANSI(before[0]).trim()).toBe('● Truncated response · 1 step ›');
+    expect(Bun.stripANSI(before[1]).trim()).toBe('模型输出已达长度上限');
+    expect(Bun.stripANSI(before[2]).trim()).toBe('• Follow-up · 1 step ›');
+    await s.reload(); expect(rows()).toEqual(before);
+    await s.resume(); expect(rows()).toEqual(before);
+  } finally { await s.close(); }
+}, 30000);
+
+test('real InteractiveMode: truncated tool calls auto-continue without introducing a replay boundary', async () => {
+  const s = await scenario([
+    { content: [thought('Truncated tool'), tool('truncated', 'outer')], stopReason: 'length' },
+    { content: [thought('Recovery'), prose('Recovered answer.')], stopReason: 'stop' },
+  ]);
+  try {
+    await s.prompt(); await s.idle();
+    expect(s.calls()).toBe(2);
+    const rows = () => s.rawRendered().split('\n').filter(x => /steps?|模型输出已达长度上限/.test(x));
+    const before = rows();
+    expect(before).toHaveLength(1);
+    expect(Bun.stripANSI(before[0])).toContain('Recovery · 3 steps · 1 failed');
+    await s.reload(); expect(rows()).toEqual(before);
+    await s.resume(); expect(rows()).toEqual(before);
+  } finally { await s.close(); }
+}, 30000);
+
+test('real InteractiveMode: an unexecuted aborted tool ID can be reused by a later failed call', async () => {
+  const s = await scenario([
+    { content: [tool('reused', 'fail')], stopReason: 'aborted' },
+    { content: [tool('reused', 'fail')], stopReason: 'toolUse' },
+    { content: [prose('Final answer.')], stopReason: 'stop' },
+  ]);
+  try {
+    await s.prompt(); await s.idle();
+    await s.prompt(); await s.idle();
+    expect(s.calls()).toBe(3);
+    const rows = () => s.rawRendered().split('\n').filter(x => /steps?|操作已中断/.test(x));
+    const before = rows();
+    expect(before).toHaveLength(3);
+    expect(Bun.stripANSI(before[0])).toContain('● fail · 1 step');
+    expect(Bun.stripANSI(before[1])).toContain('操作已中断');
+    expect(Bun.stripANSI(before[2])).toContain('× fail · 1 step · 1 failed');
+    await s.reload(); expect(rows()).toEqual(before);
+    await s.resume(); expect(rows()).toEqual(before);
+  } finally { await s.close(); }
+}, 30000);
+
+for (const stopReason of ['stop', 'length']) for (const continuation of ['empty', 'hidden'] as const) {
+  test(`real InteractiveMode: ${stopReason} without tools honors ${continuation} continuation context`, async () => {
+    const s = await scenario([
+      { content: [thought('Before continuation')], stopReason },
+      { content: [thought('After continuation')], stopReason: 'stop' },
+    ], false, continuation);
+    try {
+      await s.prompt(); await s.idle();
+      // Pi rejects continue:true when no runnable context was appended. Preserve
+      // that terminal response; only the hidden instruction actually continues.
+      const continued = continuation === 'hidden';
+      expect(s.calls()).toBe(continued ? 2 : 1);
+      const rows = () => s.rawRendered().split('\n').filter(x => /steps?|模型输出已达长度上限/.test(x));
+      const before = rows();
+      expect(before).toHaveLength(!continued && stopReason === 'length' ? 2 : 1);
+      expect(Bun.stripANSI(before[0])).toContain(continued ? '• After continuation · 2 steps' : 'Before continuation · 1 step');
+      if (!continued && stopReason === 'length') expect(Bun.stripANSI(before[1])).toContain('模型输出已达长度上限');
+      await s.reload(); expect(rows()).toEqual(before);
+      await s.resume(); expect(rows()).toEqual(before);
+    } finally { await s.close(); }
+  }, 30000);
+}
+
+test('real InteractiveMode: unmatched duplicate declarations cannot capture a later batch payload', async () => {
+  const s = await scenario([
+    { content: [tool('reused', 'outer'), tool('reused', 'outer')], stopReason: 'toolUse' },
+    { content: [prose('First answer.')], stopReason: 'stop' },
+    { content: [tool('reused', 'fail')], stopReason: 'toolUse' },
+    { content: [prose('Second answer.')], stopReason: 'stop' },
+  ]);
+  try {
+    await s.prompt('FIRST_USER'); await s.idle();
+    await s.prompt('SECOND_USER'); await s.idle();
+    expect(s.calls()).toBe(4);
+    s.key('\x0f'); await Bun.sleep(30);
+    const checkPlacement = () => {
+      const text = s.rendered();
+      expect(text).toContain('PRIVATE_OUTER_RESULT'); expect(text).toContain('SECOND_USER');
+      expect(text).toContain('PRIVATE_TOOL_FAILURE');
+      expect(text.indexOf('PRIVATE_OUTER_RESULT')).toBeLessThan(text.indexOf('SECOND_USER'));
+      expect(text.indexOf('PRIVATE_TOOL_FAILURE')).toBeGreaterThan(text.indexOf('SECOND_USER'));
+      expect(text.match(/PRIVATE_TOOL_FAILURE/g)).toHaveLength(1);
+    };
+    checkPlacement();
+    await s.reload(); checkPlacement();
+    await s.resume(); s.key('\x0f'); await Bun.sleep(30); checkPlacement();
   } finally { await s.close(); }
 }, 30000);
 
@@ -138,11 +256,12 @@ test('real native Ctrl+O: global fold/unfold preserves counters, contexts and re
   try {
     await s.prompt(); await Bun.sleep(50);
     const before = s.rendered(), entries = JSON.stringify(s.manager.getBranch());
-    const summaryFields = (text: string) => text.split('\n').filter(x => x.includes(' steps | tools ')).map(x => x.replace(/[▸▾]/g, '').trim());
+    const summaryFields = (text: string) => text.split('\n').filter(x => /\b\d+ steps?\b/.test(x)).map(x => x.replace(/[›⌄]/g, '').trim());
     expect(s.expanded()).toBe(false); expect(before).not.toContain('PRIVATE_THINKING_DETAIL');
     const collapsedRows = s.rawRendered().split('\n');
-    for (const [index, row] of collapsedRows.entries()) if (row.includes(' steps | tools ')) {
-      expect(Bun.stripANSI(row).startsWith('  ▸ ')).toBe(true);
+    for (const [index, row] of collapsedRows.entries()) if (/\b\d+ steps?\b/.test(row)) {
+      expect(Bun.stripANSI(row)).toMatch(/^[•×●] /);
+      expect(Bun.stripANSI(row).trimEnd()).toEndWith('›');
       expect(collapsedRows[index - 2]).toBe(''); // Native-style external gap, no state background.
       expect(Bun.stripANSI(collapsedRows[index - 1]).trim()).toBe('');
       expect(collapsedRows[index + 1]).toBe(collapsedRows[index - 1]);

@@ -3,16 +3,16 @@ import { AssistantMessageComponent, getPackageDir, initTheme } from '@earendil-w
 import { Container, TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui';
 import { ActivityState } from '../src/state.ts';
 import { mount, Projection } from '../src/bridge.ts';
-import { renderHeader, type Stats } from '../src/text.ts';
+import { renderHeader, format, type Stats } from '../src/text.ts';
 import { paintActivityLines } from '../src/surface.ts';
-import expandedLayout from './fixtures/expanded-layout-before-padding.json';
+import expandedLayout from './fixtures/summary-layout.json';
 
 initTheme('dark', false);
 const { getThemeByName } = await import(`${getPackageDir()}/dist/modes/interactive/theme/theme.js`);
 const thinking = (text = '检查配置') => ({ type: 'thinking', thinking: text });
 const tool = { type: 'toolCall', id: 't', name: 'probe', arguments: {} };
 const message = (content: any[]): any => ({ role: 'assistant', content, stopReason: 'stop', timestamp: 1000 });
-const stats: Stats = { theme: '检查配置 中文👨‍👩‍👧‍👦\x1b[31mred\x1b[0m\x1b]52;c;SECRET\x07', steps: '10', tools: '7', ok: '5', err: '1', open: '1', background: 'toolErrorBg' };
+const stats: Stats = { theme: '检查配置 中文👨‍👩‍👧‍👦\x1b[31mred\x1b[0m\x1b]52;c;SECRET\x07', steps: 10, failed: 1, background: 'toolErrorBg' };
 
 function expectBackground(line: string, expected: string, width: number) {
   let background: string | undefined;
@@ -52,7 +52,7 @@ function fixture() {
   };
 }
 
-test('collapsed headers have three full-background rows, centered vertically with two-column horizontal padding', () => {
+test('collapsed headers have three full-background rows with no reserved horizontal padding', () => {
   for (const name of ['dark', 'light']) for (const background of ['toolPendingBg', 'toolSuccessBg', 'toolErrorBg'] as const) {
     const theme = getThemeByName(name)!;
     for (const width of [1, 2, 3, 4, 5, 8, 40, 80, 160]) {
@@ -63,18 +63,19 @@ test('collapsed headers have three full-background rows, centered vertically wit
         expectBackground(row, theme.getBgAnsi(background), width);
         expect(row).not.toMatch(/[\r\n]/); expect(row).not.toContain('SECRET');
       }
-      const padding = Math.min(2, Math.floor((width - 1) / 2)), middle = Bun.stripANSI(rows[1]!);
+      const middle = Bun.stripANSI(rows[1]!);
       expect(middle.trim().length).toBeGreaterThan(0);
-      expect(middle.startsWith(' '.repeat(padding))).toBe(true); expect(middle.endsWith(' '.repeat(padding))).toBe(true);
-      if (width >= 80) expect(middle).toContain('  ▸ 检查配置');
+      expect(middle.startsWith(' ')).toBe(false);
+      expect(middle.trimEnd()).toBe(Bun.stripANSI(format({ ...stats, background }, width, text => text, false)).trimEnd());
+      if (width >= 80) expect(middle).toContain('检查配置');
     }
   }
 });
 
-test('expanded headers match the independently saved pre-padding layout; zero width emits nothing', () => {
+test('expanded headers match the independent compact-layout fixture; zero width emits nothing', () => {
   for (const name of ['dark', 'light']) for (const fixture of expandedLayout.cases) {
     const theme = getThemeByName(name)!;
-    expect(renderHeader(expandedLayout.stats as Stats, fixture.width, theme, true).map(row => Bun.stripANSI(row))).toEqual([fixture.text]);
+    expect(renderHeader(expandedLayout.stats as Stats, fixture.width, theme, true).map(row => Bun.stripANSI(row))).toEqual([fixture.text.padEnd(fixture.width)]);
   }
   expect(renderHeader(stats, 0, getThemeByName('dark')!, false)).toEqual([]);
   expect(renderHeader(stats, 0, getThemeByName('dark')!, true)).toEqual([]);
@@ -84,10 +85,10 @@ test('mounted groups have one external gap plus three colored rows; expanded int
   const f = fixture();
   try {
     const m = message([thinking('TITLE\n\nTHOUGHT_BODY')]); f.add(m); f.state.settle(false);
-    const collapsed = f.render(); expect(collapsed).toHaveLength(4); expect(collapsed[0]).toBe(''); expect(Bun.stripANSI(collapsed[2]!)).toStartWith('  ▸ ');
+    const collapsed = f.render(); expect(collapsed).toHaveLength(4); expect(collapsed[0]).toBe(''); expect(Bun.stripANSI(collapsed[2]!)).toStartWith('• ');
     f.setExpanded(true); const expanded = f.render();
     const native = new AssistantMessageComponent(m, false).render(80);
-    expect(expanded).toHaveLength(native.length + 2); expect(expanded[0]).toBe(''); expect(expanded[1]).toContain('▾');
+    expect(expanded).toHaveLength(native.length + 2); expect(expanded[0]).toBe(''); expect(expanded[1]).toContain('⌄');
     f.setExpanded(false); expect(f.render()).toEqual(collapsed);
     f.add(message([{ type: 'text', text: 'PROSE_OUTSIDE_BLOCK' }])); const withProse = f.render();
     expect(withProse.slice(0, 4)).toEqual(collapsed);
@@ -102,7 +103,7 @@ test('padding background and counter row flush together when the visible group s
     f.state.tool('t', 'probe', undefined, 'err'); f.state.settle(false);
     const after = f.render(); expect(after).toHaveLength(4); expect(after).not.toEqual(before); expect(after[0]).toBe('');
     for (const row of after.slice(1)) expectBackground(row, getThemeByName('dark')!.getBgAnsi('toolErrorBg'), 80);
-    expect(Bun.stripANSI(after[2]!)).toContain('err 1');
+    expect(Bun.stripANSI(after[2]!)).toContain('1 failed');
   } finally { f.release(); }
 });
 
@@ -116,9 +117,9 @@ test('even only the top padding going offscreen freezes all three rows atomicall
     f.setTheme('light'); const light = f.render();
     expect(light[0]).toBe('');
     for (const row of light.slice(1)) expectBackground(row, getThemeByName('light')!.getBgAnsi('toolPendingBg'), 80);
-    expect(Bun.stripANSI(light[2]!)).toContain('err 0');
+    expect(Bun.stripANSI(light[2]!)).not.toContain('failed');
     f.setExpanded(true); f.render(); f.setExpanded(false);
-    const refreshed = f.render(); expect(Bun.stripANSI(refreshed[2]!)).toContain('err 1'); expect(refreshed[0]).toBe('');
+    const refreshed = f.render(); expect(Bun.stripANSI(refreshed[2]!)).toContain('1 failed'); expect(refreshed[0]).toBe('');
     for (const row of refreshed.slice(1)) expectBackground(row, getThemeByName('light')!.getBgAnsi('toolErrorBg'), 80);
   } finally { f.release(); }
 });
@@ -138,7 +139,7 @@ test('real regular renderer keeps the padded block frozen without clearing scrol
     expect(f.terminal.output).toContain(bg); expect(f.terminal.output).toContain('\x1b[3J');
     expect(f.render()[0]).toBe('');
     for (const row of f.render().slice(1, 4)) expectBackground(row, bg, 80);
-    expect(Bun.stripANSI(f.render()[2]!)).toContain('err 0');
+    expect(Bun.stripANSI(f.render()[2]!)).not.toContain('failed');
   } finally { f.release(); }
 });
 
@@ -177,7 +178,7 @@ test('only the unpainted gap going offscreen does not freeze a still-visible col
     f.add(message([thinking(), tool])); f.render();
     (f.tui as any).previousViewportTop = 1;
     f.state.tool('t', 'probe', undefined, 'err'); f.state.settle(false);
-    const rows = f.render(); expect(rows[0]).toBe(''); expect(rows[2]).toContain('err 1');
+    const rows = f.render(); expect(rows[0]).toBe(''); expect(rows[2]).toContain('1 failed');
     for (const row of rows.slice(1)) expectBackground(row, getThemeByName('dark')!.getBgAnsi('toolErrorBg'), 80);
   } finally { f.release(); }
 });

@@ -33,7 +33,7 @@ test('real regular viewport: delayed top-level failure never recolors scrollback
     expect(doc.render(80)[0]).toBe('');
     expect(doc.render(80).slice(1, 4)).toEqual(before);
     expect(terminal.output).not.toContain('\x1b[3J');
-    expect(s.groups[0].tools.get('outer')).toBe('err');
+    expect([...s.groups[0].tools.values()]).toEqual(['err']);
   } finally { release(); }
 });
 test('pure prose stays native; error body hidden until exactly one settled notice', () => {
