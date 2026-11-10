@@ -1,6 +1,6 @@
 # Rex Prompt Navigation
 
-在 **Rex + Pi 1.5.0 的 regular TUI** 中恢复用户消息的原生 prompt 标记，使 Rex 的 `⌘↑ / ⌘↓`（Jump to Previous/Next Prompt）有用户消息可导航。
+在 **Rex + Pi 的 regular TUI** 中恢复用户消息的原生 prompt 标记，使 Rex 的 `⌘↑ / ⌘↓`（Jump to Previous/Next Prompt）有用户消息可导航。
 
 只增强显示，不改用户输入、会话文件、模型上下文或快捷键。不切 fullscreen，不修改 Pi 安装文件。
 
@@ -37,7 +37,7 @@ PI_REX_PROMPTS=0 pi --tui-mode regular
 - 只恢复真实 `UserMessageComponent` 的标记，包含恢复历史、分支切换和新消息；不把助手消息、工具结果、编辑器草稿变成目标。
 - “历史”是 Pi 实际显示的消息，不是已被压缩/从当前分支移除的内容，也不能突破终端自身的 scrollback 限额。
 - fullscreen 使用 Pi 自己的导航，本插件不增强。运行时切换渲染器会禁用增强并提示；回到 regular 后使用 `/rex-prompts on` 或 `/reload`。
-- 目前严格限定 **Pi 1.5.0**，升级后自动禁用并提示，不猜测内部 ABI 兼容性。
+- **不设置 Pi 版本白名单或版本上限**，宿主 peer dependencies 使用 `*`。版本升级本身不会导致禁用；只有实际 renderer、终端或状态编码接口不兼容时，才停用增强并保留 Pi 原生功能。
 - 不修改 Rex 的键位，操作系统或 Rex 自定义绑定冲突仍需单独处理。
 
 ## 实现与稳定性保护
@@ -50,7 +50,7 @@ Pi 的用户和助手组件都会生成 `OSC 133;A/B/C`，regular 渲染器会�
 2. 在一次同步渲染期间，临时包装真实用户组件的 `render`，在原有行首标记前添加零宽 SGR reset，避开 Pi 的行首过滤。`finally` 立即恢复组件方法。助手标记仍由 Pi 原样过滤；显示的行、列与文字不变。
 3. 只包装当前终端实例的 `write`。每个完整 `133;A` 后，仅在当前真实状态为 `working/blocked/idle` 时立即补发状态，使用宿主的 `formatProgramStatus` 编码，在同一写入中发出。**不重放 `done/error`**，避免刷新完成时间或产生重复完成事件；`clear` 和不存在的记录也不重放。不建立另一套状态机，不强制开启不受支持的状态协议。
 4. 处理跨 1 MiB 写入边界被拆开的标记。状态不参与渲染行的缓存比较，不因每次状态变化重绘所有历史消息。
-5. 安装前检查版本、renderer 过滤逻辑、终端状态字段和编码接口。运行时检测 renderer 替换或接口变化，停止增强并通知。
+5. 安装前检查实际 renderer 过滤逻辑、终端状态字段和编码接口，不按 `VERSION` 决定是否启用。运行时检测 renderer 替换或接口变化，停止增强并通知。
 6. `/reload`、会话替换和退出时幂等恢复原方法。清理不覆盖其他扩展后来安装的方法；已被其他扩展保留的包装器退化为透传。
 
 原生滚动、差异渲染、重绘、缩放和 overlay 仍由 Pi 管理。没有文件补丁，没有后台轮询，没有 prompt 内容日志或网络请求。
@@ -61,7 +61,7 @@ Pi 的用户和助手组件都会生成 `OSC 133;A/B/C`，regular 渲染器会�
 
 ## 验证
 
-本机环境：Pi 1.5.0、Rex Beta 0.1.0 (1829)、Rex server `0.0.1793741575-g1b6654`。
+本次自动化回归宿主为 **Pi 1.5.1**。早期真实 Rex 协议验证使用 Pi 1.5.0、Rex Beta 0.1.0 (1829)、Rex server `0.0.1793741575-g1b6654`；这些是验证环境，不是支持版本限制。
 
 ```sh
 cd packages/rex-prompt-navigation
@@ -70,14 +70,15 @@ bun test
 
 测试使用 Bun 和本机 Pi peer 模块；`node_modules/@earendil-works/*` 仅链接宿主，不安装/打包第二份 Pi。宿主路径或版本不同时重新准备开发依赖；参见仓库开发指南。
 
-本机结果：**28 项测试通过**，4 个测试文件分别独立运行也全部通过；安全测试显式初始化主题，不依赖集成测试的执行顺序。源码通过 TypeScript 6.0.3 strict 类型检查（`tsc --noEmit`，项目包含 `tsconfig.json`）。`npm run typecheck` 需要开发环境中已有 TypeScript CLI；不要为了测试安装第二份 Pi 宿主。
+本机结果：**35 项测试通过，0 失败（5 个文件）**；各测试文件分别独立运行也全部通过。安全测试显式初始化主题，不依赖集成测试的执行顺序。源码通过 TypeScript 7.0.2 strict 类型检查（`tsc --noEmit`，项目包含 `tsconfig.json`）。`npm run typecheck` 需要开发环境中已有 TypeScript CLI；不要为了测试安装第二份 Pi 宿主。
 
 自动化覆盖：
 
 - 原生过滤的负对照、仅用户消息增强、状态精确重放、BEL/ST 标记的所有拆分位置及大写入边界。
 - 新/历史消息、流式正文、工具结果、中文/emoji、缩放、reload/resume。
 - `working/blocked/idle` 精确重放，`done/error` 三条用户消息重复重绘不补发任何状态；不支持/clear 状态不伪造；真实 InteractiveMode 的工作和对话框状态。
-- 与 Activity Summary 共存、overlay 可见布局、命令开关、渲染器切换、异常清理、冻结节点、版本/ABI 拒绝和重复挂载保护。
+- 与 Activity Summary 共存、overlay 可见布局、命令开关、渲染器切换、异常清理、冻结节点、实际接口不兼容拒绝和重复挂载保护。
+- `compatibility.test.ts` 在隔离进程中仅替换宿主版本字符串（1.4.0 / 1.5.0 / 1.5.1 / 1.6.0 / 2.0.0 / 99.0.0），保留真实当前宿主的类和接口，验证不再按版本号阻止启用、标记输出和卸载；实际渲染器不兼容时仍回退。另检查所有 workspace 的 Pi peers 无版本限制。这不等于实测了这些版本各自的实现。
 - 其他终端、fullscreen 和紧急禁用的负对照。
 
 真实 Rex 离线 CLI 测试使用 `test/rex-fixture.ts`（非插件入口）：确认编译打包的 Pi 能加载扩展，写出用户标记，server 仍能查询到 `working` 和 `done`，并能 `/reload`。
@@ -89,5 +90,5 @@ Review 修正后另外在独立 Rex 测试会话验证：每轮重绘 3 条用�
 ## 源码
 
 - `src/index.ts`：生命周期、环境门控与命令。
-- `src/bridge.ts`：受保护的 Pi 1.5.0 运行时适配与状态重放。
+- `src/bridge.ts`：按实际宿主接口检查的运行时适配与状态重放，不接收或比较版本号。
 - `test/`：回归测试和独立离线 QA provider，无真实模型调用。

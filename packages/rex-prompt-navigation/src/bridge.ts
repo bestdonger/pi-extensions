@@ -1,6 +1,6 @@
 import { UserMessageComponent } from '@earendil-works/pi-coding-agent';
 
-// Pi 1.5.0 private ABI is deliberately confined to this file. No prototypes,
+// Private host interfaces are confined here; compatibility is structural, not version-based. No prototypes,
 // installation files, process.stdout, editor, or user/model messages are changed.
 const OWNER = Symbol.for('pi-rex-prompt-navigation/bridge/v1');
 const ZONES = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
@@ -79,9 +79,8 @@ export class StatusReplay {
   }
 }
 
-export function mount(host: Host, version: string, formatStatus: FormatStatus,
+export function mount(host: Host, formatStatus: FormatStatus,
   warn: (reason: string) => void, currentHost: () => Host = () => host): Bridge {
-  if (version !== '1.5.0') throw new Error(`未验证的 Pi 版本 ${version}（仅验证 1.5.0）`);
   if (host.mode !== 'regular') throw new Error('仅支持 regular TUI');
   if (host[OWNER]) throw new Error('当前 TUI 已挂载 Rex prompt bridge');
   const terminal = host.terminal;

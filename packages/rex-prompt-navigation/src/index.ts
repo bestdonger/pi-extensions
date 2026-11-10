@@ -26,7 +26,7 @@ export default function rexPrompts(pi: ExtensionAPI) {
     if (process.env.PI_REX_PROMPTS === '0') { reason = 'PI_REX_PROMPTS=0 禁用'; return; }
     try {
       tui = unwrapTui(reference);
-      bridge = mount(tui, VERSION, formatProgramStatus, message => warn(ctx, message),
+      bridge = mount(tui, formatProgramStatus, message => warn(ctx, message),
         () => unwrapTui(reference!));
       reason = '已启用';
     } catch (e) { warn(ctx, e instanceof Error ? e.message : '未知兼容性错误'); }

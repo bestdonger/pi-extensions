@@ -39,7 +39,7 @@ test('real regular renderer strips native markers; adapter restores them with ex
   const f = fixture();
   expect(f.frames()).not.toContain(A);
   const raw = f.host.render(80);
-  const bridge = mount(f.host, '1.5.0', formatProgramStatus, () => {});
+  const bridge = mount(f.host, formatProgramStatus, () => {});
   const rendered = f.host.render(80);
   expect(rendered.map(stripTerminalSequences)).toEqual(raw.map(stripTerminalSequences));
   const output = f.frames();
@@ -65,7 +65,7 @@ for (const state of ['done', 'error']) test(`redrawing three user prompts never 
   const f = fixture([A + 'user one', B + C, A + 'user two', B + C, A + 'user three', B + C]);
   const status = { state, app: 'pi', message: 'result ready' };
   Reflect.set(f.terminal, 'programStatus', status);
-  const bridge = mount(f.host, '1.5.0', formatProgramStatus, () => {});
+  const bridge = mount(f.host, formatProgramStatus, () => {});
   try {
     const output = f.frames();
     expect(output.match(/\x1b\]133;A\x07/g)).toHaveLength(3);
@@ -81,7 +81,7 @@ for (const state of ['done', 'error']) test(`redrawing three user prompts never 
 
 test('only prompt-sensitive status transitions replay without changing render cache', () => {
   const f = fixture();
-  const bridge = mount(f.host, '1.5.0', formatProgramStatus, () => {});
+  const bridge = mount(f.host, formatProgramStatus, () => {});
   const before = f.host.render(80);
   for (const state of ['working', 'blocked', 'done', 'error', 'idle', 'clear']) {
     const status = { state, app: 'pi', kind: 'question', message: 'safe session name' };
@@ -100,7 +100,7 @@ test('only prompt-sensitive status transitions replay without changing render ca
   bridge.dispose();
 });
 test('new messages, stream updates, tool rows and resizes keep original visible layout', () => {
-  const f = fixture(); const bridge = mount(f.host, '1.5.0', formatProgramStatus, () => {});
+  const f = fixture(); const bridge = mount(f.host, formatProgramStatus, () => {});
   f.frames();
   f.lines.push('tool start', 'tool result', A + '中文😀 new prompt', B + C + '', 'stream token 1');
   const newOutput = f.frames(); expect(newOutput).toContain(A); expect(newOutput).toContain('tool result');
@@ -113,15 +113,15 @@ test('new messages, stream updates, tool rows and resizes keep original visible 
 test('dispose is idempotent and restores original own descriptors; reload never nests wrappers', () => {
   const f = fixture(); const originalRender = f.host.render, originalWrite = f.terminal.write;
   for (let i = 0; i < 5; i++) {
-    const bridge = mount(f.host, '1.5.0', formatProgramStatus, () => {});
-    expect(() => mount(f.host, '1.5.0', formatProgramStatus, () => {})).toThrow('已挂载');
+    const bridge = mount(f.host, formatProgramStatus, () => {});
+    expect(() => mount(f.host, formatProgramStatus, () => {})).toThrow('已挂载');
     bridge.dispose(); bridge.dispose();
     expect(f.host.render).toBe(originalRender); expect(f.terminal.write).toBe(originalWrite);
     expect(Object.hasOwn(f.host, 'render')).toBe(false); expect(Object.hasOwn(f.terminal, 'write')).toBe(false);
   }
 });
 test('later extensions are not overwritten by cleanup', () => {
-  const f = fixture(); const bridge = mount(f.host, '1.5.0', formatProgramStatus, () => {});
+  const f = fixture(); const bridge = mount(f.host, formatProgramStatus, () => {});
   const priorRender = f.host.render, priorWrite = f.terminal.write;
   const nextRender = function (w: number) { return priorRender.call(f.host, w); };
   const nextWrite = function (data: string) { return priorWrite.call(f.terminal, data); };
@@ -131,20 +131,19 @@ test('later extensions are not overwritten by cleanup', () => {
   expect(f.host.render(80)[0]).toBe(A + 'user one');
   f.terminal.output = ''; f.terminal.write(A); expect(f.terminal.output).toBe(A);
 });
-test('unverified versions, renderer ABI changes and immutable hosts refuse installation', () => {
+test('unsupported modes, renderer ABI changes and immutable hosts refuse installation', () => {
   const f = fixture(); const original = f.terminal.write;
-  expect(() => mount(f.host, '1.6.0', formatProgramStatus, () => {})).toThrow('未验证');
-  f.host.mode = 'fullscreen'; expect(() => mount(f.host, '1.5.0', formatProgramStatus, () => {})).toThrow('regular');
+  f.host.mode = 'fullscreen'; expect(() => mount(f.host, formatProgramStatus, () => {})).toThrow('regular');
   f.host.mode = 'regular';
   Object.defineProperty(f.host, 'render', { value: f.host.render, configurable: false, writable: false });
-  expect(() => mount(f.host, '1.5.0', formatProgramStatus, () => {})).toThrow();
+  expect(() => mount(f.host, formatProgramStatus, () => {})).toThrow();
   expect(f.terminal.write).toBe(original);
   const g = fixture(); g.host.doRender = () => {};
-  expect(() => mount(g.host, '1.5.0', formatProgramStatus, () => {})).toThrow('渲染器已变化');
+  expect(() => mount(g.host, formatProgramStatus, () => {})).toThrow('渲染器已变化');
 });
 test('incompatible runtime disables once and leaves native rendering functional', async () => {
   const f = fixture(); const warnings: string[] = [];
-  const bridge = mount(f.host, '1.5.0', formatProgramStatus, s => warnings.push(s));
+  const bridge = mount(f.host, formatProgramStatus, s => warnings.push(s));
   Reflect.set(f.terminal, 'programStatus', { state: 'unknown' });
   expect(f.host.render(80)[0]).toBe(A + 'user one');
   expect(bridge.active).toBe(false); await Promise.resolve(); expect(warnings).toHaveLength(1);
@@ -153,13 +152,13 @@ test('incompatible runtime disables once and leaves native rendering functional'
 test('unsupported status formatter fails closed, including after activation', async () => {
   const f = fixture(); let broken = false; const warnings: string[] = [];
   const encode = (s: any) => { if (broken) throw new Error('broken'); return formatProgramStatus(s); };
-  const bridge = mount(f.host, '1.5.0', encode, s => warnings.push(s));
+  const bridge = mount(f.host, encode, s => warnings.push(s));
   broken = true; f.terminal.write(A + 'user' + B + C);
   expect(f.terminal.output).not.toContain(A); expect(f.terminal.output).toContain('user');
   expect(bridge.active).toBe(false); await Promise.resolve(); expect(warnings).toHaveLength(1);
 });
 test('large writes preserve all data and restore status at split marker boundaries', () => {
-  const f = fixture(); const bridge = mount(f.host, '1.5.0', formatProgramStatus, () => {});
+  const f = fixture(); const bridge = mount(f.host, formatProgramStatus, () => {});
   const large = 'x'.repeat(1024 * 1024 - 4) + A + 'tail';
   const parts = [large.slice(0, 1024 * 1024), large.slice(1024 * 1024)];
   parts.forEach(p => f.terminal.write(p));

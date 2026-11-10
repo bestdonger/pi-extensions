@@ -32,7 +32,7 @@ function setup() {
 test('only real user nodes get markers; assistants and tool-like text do not', () => {
   const s = setup(); const original = s.user.render;
   const baseline = s.host.render(100).map(stripTerminalSequences);
-  const bridge = mount(s.host, '1.5.0', formatProgramStatus, () => {});
+  const bridge = mount(s.host, formatProgramStatus, () => {});
   const output = s.flush();
   expect(output.match(/\x1b\]133;A\x07/g)).toHaveLength(1);
   expect(stripTerminalSequences(output)).toContain('ACTUAL ASSISTANT');
@@ -44,7 +44,7 @@ test('temporary node hooks are restored even if the original renderer throws', (
   const s = setup(); const original = s.user.render;
   const component = { render() { throw new Error('original renderer failure'); }, invalidate() {} };
   s.tui.addChild(component);
-  const bridge = mount(s.host, '1.5.0', formatProgramStatus, () => {});
+  const bridge = mount(s.host, formatProgramStatus, () => {});
   expect(() => s.host.render(100)).toThrow('original renderer failure');
   expect(s.user.render).toBe(original); expect(Object.hasOwn(s.user, 'render')).toBe(false);
   bridge.dispose();
@@ -52,7 +52,7 @@ test('temporary node hooks are restored even if the original renderer throws', (
 test('immutable user component disables enhancement without damaging native output', async () => {
   const s = setup(); const warnings: string[] = [];
   Object.defineProperty(s.user, 'render', { configurable: false, writable: false, value: s.user.render });
-  const bridge = mount(s.host, '1.5.0', formatProgramStatus, msg => warnings.push(msg));
+  const bridge = mount(s.host, formatProgramStatus, msg => warnings.push(msg));
   const output = s.flush(); expect(output).not.toContain(A);
   expect(stripTerminalSequences(output)).toContain('ACTUAL USER');
   expect(bridge.active).toBe(false); await Promise.resolve(); expect(warnings).toHaveLength(1);
@@ -66,7 +66,7 @@ test('real stable reference unwraps to the active renderer; mode replacement fai
   });
   expect(unwrapTui(reference)).toBe(s.tui);
   const warnings: string[] = [];
-  const bridge = mount(unwrapTui(reference), '1.5.0', formatProgramStatus, msg => warnings.push(msg), () => unwrapTui(reference));
+  const bridge = mount(unwrapTui(reference), formatProgramStatus, msg => warnings.push(msg), () => unwrapTui(reference));
   expect(s.flush()).toContain(A);
   current = { mode: 'fullscreen' };
   s.terminal.output = ''; s.terminal.write('fullscreen frame');
@@ -79,7 +79,7 @@ test('overlays keep exact native visible output and user hooks never remain inst
   s.tui.showOverlay(overlay, { anchor: 'top-left', width: 30 });
   const composite = () => Reflect.get(s.tui, 'compositeOverlays').call(s.tui, s.host.render(100), 100, 30).map(stripTerminalSequences);
   const baseline = composite();
-  const bridge = mount(s.host, '1.5.0', formatProgramStatus, () => {});
+  const bridge = mount(s.host, formatProgramStatus, () => {});
   expect(baseline.join('\n')).toContain('OVERLAY');
   expect(composite()).toEqual(baseline);
   s.flush();

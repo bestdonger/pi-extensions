@@ -51,7 +51,7 @@
 
 ### Rex Prompt Navigation
 
-在 Rex 中为真实用户消息恢复 prompt 标记，供 `⌘↑ / ⌘↓` 导航，同时保留 Pi 原生程序状态。仅在 Rex + Pi 1.5.0 regular TUI 中启用。
+在 Rex 中为真实用户消息恢复 prompt 标记，供 `⌘↑ / ⌘↓` 导航，同时保留 Pi 原生程序状态。用于 Rex + Pi regular TUI，不按 Pi 版本号限制启用。
 
 [实现、兼容边界与验收说明 →](packages/rex-prompt-navigation/README.md)
 
@@ -72,7 +72,7 @@ Priority 可能消耗更多费用或额度，是否生效由上游决定。
 ## 快速开始
 
 > [!IMPORTANT]
-> 从 GitHub 安装，尚未发布 npm 包。Activity Summary **默认支持新版 Pi，不按版本号限制加载**，本次实测基线为 **Pi 1.5.1 regular/fullscreen**；Rex Prompt Navigation 仍仅验证 **Pi 1.5.0 regular TUI**。
+> 从 GitHub 安装，尚未发布 npm 包。Activity Summary 与 Rex Prompt Navigation **不按 Pi 版本号限制加载，按实际接口兼容**；本次实测基线为 **Pi 1.5.1**，分别支持 regular/fullscreen 和 regular TUI。
 
 ```sh
 pi install git:github.com/bestdonger/pi-extensions
