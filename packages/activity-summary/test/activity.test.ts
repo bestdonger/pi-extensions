@@ -136,11 +136,11 @@ test('regular main screen captured terminal renders no tool body', () => {
   (f.tui as any).doRender();
   expect(f.terminal.output).toContain('steps'); expect(f.terminal.output).not.toContain('HIDDEN RESULT');
 });
-test('unsupported roots/modes fail open and leaving regular restores source once', () => {
+test('unsupported roots/modes fail open and restore the source once', () => {
   const s = new ActivityState(); const tui = new QuietTui(new Terminal() as any);
   expect(mount(tui, () => s, x => x, () => {})).toBeUndefined();
   const f = fixture(s); f.source.addChild({ render: () => ['native'], invalidate() {} });
-  (f.tui as any).mode = 'fullscreen'; expect(f.render()).toEqual(['native']);
+  (f.tui as any).mode = 'unsupported'; expect(f.render()).toEqual(['native']);
   expect(f.warnings()).toBe(1); expect(f.document.children[2]).toBe(f.source); f.render(); expect(f.warnings()).toBe(1);
 });
 test('raw result replay is exact, branch-local, and does not add context metadata', () => {

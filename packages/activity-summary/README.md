@@ -1,6 +1,6 @@
 # pi-activity-summary
 
-适用于本机 **Pi 1.5.0 / regular TUI** 的独立插件。连续 thinking / tool 活动合并成摘要块；所有助手正文，包括进度说明，仍立即流式显示，并分隔活动段。
+支持 **Pi 的 regular / fullscreen TUI**，默认兼容新版，不按版本号限制加载，无需 `pi-libtui`。本次实测基线为本机 Pi 1.5.1。连续 thinking / tool 活动合并成摘要块；所有助手正文，包括进度说明，仍立即流式显示，并分隔活动段。
 
 ## 摘要格式
 
@@ -31,19 +31,26 @@
 2. 进行中、有未完成调用、状态未确认、中断或输出截断：`toolPendingBg`。
 3. 活动段正常结束且无失败／未完成调用：`toolSuccessBg`，包括正常结束的纯思考段。
 
-标题、计数、状态标记与背景共享一个最多每 **250ms** 更新的快照。正文开始或任务结束时，安全可见的当前块可补刷一次，然后冻结；离屏保护优先。**分组边界冻结的快照仍保持原规则**：即使之后收到工具结果，也不自动改写这个已冻结块。内部数据继续更新，手动展开／收起读取最新值，因此冻结画面不一定等于重载后的最新结果。
+标题、计数、状态标记与背景共享一个最多每 **250ms** 更新的快照，正文开始或任务结束时可补刷一次。
 
-即使只有顶部同色留白离屏，也冻结整个块；只有外部默认背景空行离屏时不冻结可见色块。主题切换可重新应用调色板，但不解冻统计或状态。
+- **regular** 保持原有冻结策略：离屏保护优先，分组边界冻结后即使收到迟到结果也不回写。即使只有顶部同色留白离屏，也冻结整个块；只有外部默认背景空行离屏时不冻结可见色块。内部状态继续更新，手动展开／收起读取最新值；主题变化只重用快照并重新着色。
+- **fullscreen** 由 Pi 管理完整的可重绘聊天记录，不沿用 regular 的离屏冻结。离屏块及已结束块收到迟到结果后仍按 250ms 节流更新，滚回时可见最新统计和状态。
 
 ## 展开与收起
 
-**`Ctrl+O` 全局切换**所有历史和新活动段，复用 Pi 原生 `app.tools.expand` 与 `getToolsExpanded()`。尊重重绑键位和模态焦点，不注册竞争快捷键，不修改全局 `hideThinkingBlock`。`/reload` 跟随宿主展开状态，重开 UI 默认收起。
+**`Ctrl+O` 全局切换**所有历史和新活动段，复用 Pi 原生 `app.tools.expand` 与 `getToolsExpanded()`。尊重重绑键位和模态焦点，不注册竞争快捷键，不修改全局 `hideThinkingBlock`。
+
+**fullscreen 可点击单块**：左键点击摘要或它的上下留白，单独展开／收起该组，不改变其他组或宿主全局展开状态。同组后续到达的工具跟随该组。下一次 `Ctrl+O` 清除所有单块覆盖，以宿主全局状态为准。
+
+单块状态仅属于当前视图，不写会话；`/reload` 跟随宿主全局状态并清除单块覆盖，新 UI 默认收起。regular/fullscreen 可直接切换，不需再次 reload；切换时清除单块覆盖，regular 继续只用全局展开。
+
+使用 Pi 原生标准化鼠标事件，不拦截终端原始输入、不请求鼠标协议。滚轮、正文拖选复制、OSC 8 链接和弹层遮挡由 Pi 处理；摘要上可用 **Shift+拖动** 选择文字。
 
 展开时使用原生思考 Markdown、工具参数及结果；普通回答仍在色块外。原消息内交错的 tool/thinking/prose 保持顺序，工具正文只出现一次。摘要与展开文本共用同一状态背景，保留语法高亮、自定义工具渲染器、链接和原生 padding。Kitty/iTerm 图片协议与占位行原样保留，不把图像协议当文本填色。
 
-展开正文保护离屏前缀，允许不改变前缀的可见尾部更新；整个正文离屏时复用缓存。长输出使用 regular 终端滚动历史，不引入 fullscreen 局部滚动或鼠标单块切换。未保存的工具截断内容无法恢复。
+regular 展开正文保护离屏前缀，允许不改变前缀的可见尾部更新；整个正文离屏时复用缓存。长输出在 regular 使用终端滚动历史，在 fullscreen 使用 Pi 原生聊天区滚动和搜索，不另建工具局部滚动区域。未保存的工具截断内容无法恢复。
 
-**主动切换允许历史高度变化，可能触发 Pi 清屏重建。** 后续后台更新仍遵守离屏保护。宿主自身的 resize、主题变化、reload 和会话切换也可能重建 UI，不承诺终端永不清屏。
+**主动切换允许历史高度变化。** regular 可能触发 Pi 清屏重建，之后后台更新继续遵守离屏保护；fullscreen 交给 Pi 重新排版。resize、主题变化、reload 和会话切换也可能重建 UI。
 
 最终模型失败、中断和输出长度上限保留一句简短提示；收起时不展示工具错误正文，明确展开后可查看原生错误内容。
 
@@ -59,19 +66,23 @@
 - 在 assistant 消息产生前发生的中断，若原始历史没有保存证据，简短提示仅存在于当前 UI；重开时不从用户消息臆造中断。
 - 不改原始消息、工具结果、模型上下文或会话导出，不追加摘要记录。工具先执行、声明后到的 fallback 会认领原条目，不重复计数。
 
-Pi 1.5.0 没有公共 transcript projection / viewport API；`src/bridge.ts` 隔离了私有布局访问，检查 `[header, resources, chat]` 和 `previousViewportTop`。只替换显示入口，Pi 继续更新原 chat source；不修改原型，不依赖 `pi-libtui`，不拦截 stdout，不接管输入、确认框或 Esc。
+Pi 1.5 没有公共 transcript projection 挂载 API；`src/bridge.ts` 隔离了私有 `[header, resources, chat]` 布局访问，regular 额外检查 `previousViewportTop`，fullscreen 额外验证并复用宿主焦点查询和弹层返回目标清理接口。两种模式共用同一个投影，保留原生 fullscreen ScrollView、编辑器和输入 dock。Pi 继续更新原 chat source；不修改原型，不依赖 `pi-libtui`，不拦截 stdout，不接管输入、确认框或 Esc。
 
-正文与思考显示副本保留主题、padding、Markdown transformers、messageId 和 timestamp，未变文本不重复运行 transformers。工具直接复用原生组件，`src/surface.ts` 只负责背景统一和图像保护。
+正文与思考显示副本保留主题、padding、Markdown transformers、messageId 和 timestamp，未变文本不重复运行 transformers。工具直接复用原生组件；fullscreen 单块展开时为每个工具同步一次 UI 标志，后续点击原生结果区域仍可独立折叠，不被每帧重绘覆盖。收起分组、切换模式、全局切换和卸载时恢复宿主状态，不改原始消息或结果。原生工具／自定义组件的鼠标事件保留坐标和 capture/focus 目标；正文获得焦点后被隐藏时恢复之前的焦点，不影响其他仍可见正文的输入。`src/surface.ts` 只负责背景统一和图像保护。
 
-非 TUI 静默不介入；版本、模式或布局不兼容时提示一次并恢复原生显示，此时原生 thinking/tool 内容可能可见。**仅验证 Pi 1.5.0，宿主升级后需重新验证。**
+**兼容策略：面向新版，不设置版本白名单或版本上限。** 不读取 Pi 的 `VERSION`，宿主 peer dependencies 使用 `*`；升级后只要实际布局和接口保持兼容，插件继续工作，不需要为每个版本改代码。
+
+非 TUI 静默不介入；只有实际布局／渲染结构不兼容时才提示一次并恢复原生显示。私有布局访问集中在 `src/bridge.ts`，若上游确实改变结构，在这里适配。Pi 1.5.1 是本次实际回归环境，不是支持范围的上限。
 
 ## 安装与加载
 
-使用 `pi install git:github.com/bestdonger/pi-extensions` 安装根包，模式使用 `regular`。根包通过 `pi.extensions` 加载本插件的 `src/index.ts`。开发仍只在仓库 `packages/activity-summary` 下进行，不修改 Pi 的托管副本。
+使用 `pi install git:github.com/bestdonger/pi-extensions` 安装根包，两种 TUI 模式均可使用。根包通过 `pi.extensions` 加载本插件的 `src/index.ts`。开发仍只在仓库 `packages/activity-summary` 下进行，不修改 Pi 的托管副本。
 
 用 `pi config` 禁用根包中的 `packages/activity-summary/src/index.ts`，或在根包配置的 `extensions` 中加上 `!packages/activity-summary/src/index.ts`，即可单独停用本插件；重新启用后执行 `/reload` 或重开 Pi。不要同时加载本地副本或旧的 `@luan.sh/pi-collapse-transcript` 投影。
 
-磁盘配置或源码变化不会自动重载已运行的会话。若当前在 fullscreen，先切到 regular 再 `/reload`；不兼容模式下插件不会挂载。关闭插件只需禁用／移除包声明后重载，不需要删除会话数据。卸载和 reload 会释放旧桥并恢复原生组件。
+磁盘配置或源码变化不会自动重载已运行的会话。新代码可直接在 fullscreen 下 `/reload`，不需先切回 regular。关闭插件只需禁用／移除包声明后重载，不需要删除会话数据。卸载和 reload 会释放旧桥、恢复原生组件及宿主工具展开状态。
+
+开发任务不自动提交／推送代码，也不修改用户设置；从 GitHub 安装的托管副本不会随本地开发目录自动更新。
 
 ## 开发与验证
 
@@ -83,12 +94,14 @@ bun test
 bun run typecheck
 ```
 
-本次：**116 项测试通过，0 失败（11 个文件）；类型检查通过。**
+本次在 **Pi 1.5.1** 验证：**163 项测试通过，0 失败（13 个文件）；类型检查通过。**
 
+- `compatibility.test.ts`：隔离进程中模拟宿主版本 1.5.2 / 2.0.0 / 99.0.0，保留真实接口，验证两种模式不被版本号阻止；实际布局不兼容时仍正常回退，并检查 peer 声明无版本上限。这不等于已测试这些未来版本的实际实现。
 - `summary.test.ts` / `source.test.ts`：精简格式、单复数、原始历史重建、旧记录忽略、工具结果、重试与中断、重复 ID、声明补到、fallback 分组和顺序。
 - `activity.test.ts` / `regression.test.ts` / `rendering.test.ts`：分组、节流、冻结、最终补刷、原生正文、分支隔离、明暗主题和 Unicode 列宽。
 - `padding.test.ts`：三行无水平内边距布局、外部空行、每列背景、独立布局 fixture 和离屏几何。
-- `expansion.test.ts`：原生正文、自定义语义标题、交错顺序、图片协议、可见尾部更新、正文缓存和手动刷新。
-- `interactive.test.ts` / `session.test.ts`：真实 InteractiveMode + AgentSession + 内存 fake provider，验证流式正文、阻止／嵌套调用、排队 follow-up、截断和显式续写、跨批次重复 ID 的结果归属、真实 Ctrl+O、焦点、reload/resume，以及**零统计记录写入、实时与历史状态一致**。
+- `expansion.test.ts`：原生正文、自定义语义标题、交错顺序、两种模式下 Kitty/iTerm 图像输出与折叠清理、可见尾部更新、正文缓存和手动刷新。
+- `fullscreen.test.ts`：三行布局、窄屏与明暗主题、单块／全局展开优先级、流式新工具、状态恢复、迟到结果节流和跨组唤醒、resize、鼠标坐标及 capture/focus 转发、隐藏正文的焦点归还、延后请求焦点、跨组／编辑器替换后的返回链及弹层焦点恢复、原生结果独立折叠、滚轮／修饰键及异常布局。
+- `interactive.test.ts` / `session.test.ts`：真实 InteractiveMode + AgentSession + 内存 fake provider；公共交互用例同时覆盖 regular/fullscreen，并验证原生鼠标点击、文字选择、滚轮、模态遮挡、模式切换、真实 Ask 问卷联用，以及流式正文、阻止／嵌套调用、排队 follow-up、截断和显式续写、跨批次重复 ID 的结果归属、真实 Ctrl+O、焦点、reload/resume，以及**零统计记录写入、实时与历史状态一致**。
 
 测试不调用真实模型、不读取用户凭据或历史会话。捕获终端自动化不代替用户真实终端的人工视觉验收。

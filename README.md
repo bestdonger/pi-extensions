@@ -28,7 +28,7 @@
 
 ### Activity Summary
 
-收起连续的思考和工具输出，让正文留在视线里；需要细节时，用 <kbd>Ctrl</kbd> + <kbd>O</kbd> 展开。
+收起连续的思考和工具输出，让正文留在视线里；支持 regular / fullscreen。用 <kbd>Ctrl</kbd> + <kbd>O</kbd> 全局展开，fullscreen 还可点击摘要单独展开一组。
 
 ![Activity Summary 收起状态：步骤和工具结果合并为一条摘要，正文保持可见](docs/assets/activity-collapsed.svg)
 
@@ -41,8 +41,8 @@
 
 </details>
 
-- **只统计实际活动** — 显示思考与顶层工具的步骤数，以及工具成功、失败和未完成数量。
-- **保留终端习惯** — 使用 regular 模式、原生滚动历史和全局展开快捷键，不接管鼠标。
+- **只统计实际活动** — 显示思考与顶层工具的步骤数，仅在工具失败时显示失败数。
+- **两种模式同一套摘要** — 保留三行色块和状态色；regular 使用终端历史，fullscreen 使用 Pi 原生滚动、选择复制与单块点击。
 - **只改变显示** — 正文实时输出，原始消息、工具结果和模型上下文不变。
 
 [摘要行为与兼容说明 →](packages/activity-summary/README.md)
@@ -66,7 +66,7 @@ Priority 可能消耗更多费用或额度，是否生效由上游决定。
 ## 快速开始
 
 > [!IMPORTANT]
-> 从 GitHub 安装，尚未发布 npm 包。已验证 **Pi 1.5.0**；Activity Summary 和 Rex Prompt Navigation 用于 **regular TUI**，宿主升级后需重新验证。
+> 从 GitHub 安装，尚未发布 npm 包。Activity Summary **默认支持新版 Pi，不按版本号限制加载**，本次实测基线为 **Pi 1.5.1 regular/fullscreen**；Rex Prompt Navigation 仍仅验证 **Pi 1.5.0 regular TUI**。
 
 ```sh
 pi install git:github.com/bestdonger/pi-extensions
@@ -109,4 +109,4 @@ pi update git:github.com/bestdonger/pi-extensions
 ## 致谢
 
 - **Ask User Question** 基于 [juicesharp/rpiv-mono](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) 的同名插件定制，保留原作者信息与 [MIT 许可证](packages/ask-user-question/LICENSE)。
-- **Activity Summary** 参考 [luan/agents · pi-collapse-transcript](https://github.com/luan/agents/tree/main/harnesses/pi/agent/packages/pi-collapse-transcript) 的交互思路，为 regular TUI 独立实现。
+- **Activity Summary** 参考 [luan/agents · pi-collapse-transcript](https://github.com/luan/agents/tree/main/harnesses/pi/agent/packages/pi-collapse-transcript) 的交互思路，为 regular/fullscreen TUI 独立实现，不依赖它或 pi-libtui。

@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test';
 import { deflateSync } from 'node:zlib';
 import { AssistantMessageComponent, ToolExecutionComponent, getPackageDir, initTheme } from '@earendil-works/pi-coding-agent';
-import { Container, TuiMainScreen, visibleWidth, Text, getCapabilities, setCapabilities, getCellDimensions, setCellDimensions } from '@earendil-works/pi-tui';
+import { Container, TuiMainScreen, TuiAltScreen, visibleWidth, Text, getCapabilities, setCapabilities, getCellDimensions, setCellDimensions } from '@earendil-works/pi-tui';
 import { ActivityState } from '../src/state.ts';
 import { mount } from '../src/bridge.ts';
 import { paintActivityLines } from '../src/surface.ts';
@@ -18,8 +18,10 @@ class Terminal {
   hideCursor() {} showCursor() {} moveBy() {} clearLine() {} clearFromCursor() {} clearScreen() {} setTitle() {}
 }
 class QuietTui extends TuiMainScreen { requestRender() {} }
-function fixture() {
-  const terminal = new Terminal(), tui = new QuietTui(terminal as any), state = new ActivityState();
+class QuietAltScreen extends TuiAltScreen { requestRender() {} }
+function fixture(mode: 'regular' | 'fullscreen' = 'regular') {
+  const terminal = new Terminal(), tui = mode === 'regular' ? new QuietTui(terminal as any)
+    : new QuietAltScreen(terminal as any, false, undefined, { copyOnSelect: false }), state = new ActivityState();
   const document = new Container(), source = new Container();
   document.addChild(new Container()); document.addChild(new Container()); document.addChild(source); tui.addChild(document);
   let expanded = false, theme = getThemeByName('dark')!;
@@ -264,9 +266,11 @@ function pngFixture(): string {
   return Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), chunk('IHDR', header), chunk('IDAT', deflateSync(pixels)), chunk('IEND', Buffer.alloc(0))]).toString('base64');
 }
 
-for (const protocol of ['kitty', 'iterm2'] as const) test(`native ${protocol} Image → ToolExecution → projection → regular terminal preserves graphics and folds safely`, () => {
-  const capabilities = getCapabilities(), cells = getCellDimensions(), f = fixture();
+for (const mode of ['regular', 'fullscreen'] as const) for (const protocol of ['kitty', 'iterm2'] as const)
+test(`native ${protocol} Image → ToolExecution → projection → ${mode} terminal preserves graphics and folds safely`, () => {
+  const capabilities = getCapabilities(), cells = getCellDimensions(), f = fixture(mode);
   try {
+    if (mode === 'fullscreen') f.tui.start();
     setCapabilities({ images: protocol, trueColor: true, hyperlinks: true }); setCellDimensions({ widthPx: 8, heightPx: 16 });
     f.assistant(message([call()])); const native = f.tool();
     native.updateResult({ content: [{ type: 'image', data: pngFixture(), mimeType: 'image/png' }], isError: false });
@@ -277,12 +281,12 @@ for (const protocol of ['kitty', 'iterm2'] as const) test(`native ${protocol} Im
     expect(nativeRows.filter(row => row === '').length).toBeGreaterThan(1);
     if (protocol === 'kitty') expect(nativeImage.match(/\x1b_G/g)!.length).toBeGreaterThan(1);
     (f.tui as any).doRender(); expect(f.terminal.output).toContain(prefix);
-    expect((f.tui as any).previousViewportTop).toBeGreaterThan(0);
+    expect(mode === 'regular' ? (f.tui as any).previousViewportTop : (f.tui as TuiAltScreen).viewportTop).toBeGreaterThan(0);
     f.terminal.output = ''; f.setExpanded(false); (f.tui as any).doRender();
     expect(f.render().some(row => row.includes(prefix))).toBe(false);
-    if (protocol === 'kitty') expect(f.terminal.output).toContain('a=d,d=I,i=');
+    if (protocol === 'kitty') expect(f.terminal.output).toContain(mode === 'regular' ? 'a=d,d=I,i=' : 'a=d,d=a,q=2');
     f.setExpanded(true); (f.tui as any).doRender(); expect(f.render().some(row => row.includes(prefix))).toBe(true);
-  } finally { f.release(); setCapabilities(capabilities); setCellDimensions(cells); }
+  } finally { f.release(); if (mode === 'fullscreen') f.tui.stop(); setCapabilities(capabilities); setCellDimensions(cells); }
 });
 
 test('Kitty/iTerm image protocol lines and reserved empty rows are preserved byte-for-byte', () => {

@@ -1,7 +1,8 @@
-import { test, expect } from 'bun:test';
+import { test, expect, describe } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { AssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { createAgentSessionFromServices, createAgentSessionRuntime, DefaultResourceLoader, InteractiveMode, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
 import { ProcessTerminal } from '@earendil-works/pi-tui';
@@ -17,7 +18,7 @@ class CapturedTerminal extends ProcessTerminal {
 const thought = (title = 'Inspect') => ({ type: 'thinking', thinking: `**${title}**\n\nPRIVATE_THINKING_DETAIL` });
 const prose = (text: string) => ({ type: 'text', text });
 const tool = (id: string, name: string) => ({ type: 'toolCall', id, name, arguments: {} });
-async function scenario(responses: any[], retry = false, continuation: 'none' | 'empty' | 'hidden' = 'none') {
+async function createScenario(responses: any[], retry: boolean, continuation: 'none' | 'empty' | 'hidden', tuiMode: 'regular' | 'fullscreen', withAsk = false) {
   const root = await mkdtemp(join(tmpdir(), 'pi-parent-acceptance-'));
   let captured: any, context: any, calls = 0, current: any;
   const terminal = new CapturedTerminal();
@@ -50,8 +51,9 @@ async function scenario(responses: any[], retry = false, continuation: 'none' | 
       return stream;
     },
   });
-  const settingsManager = SettingsManager.inMemory({ tuiMode: 'regular', theme: 'dark', quietStartup: true, showCacheMissNotices: false, hideThinkingBlock: true, compaction: { enabled: false }, retry: { enabled: retry, maxRetries: 1, baseDelayMs: 1 }, packages: [] });
-  const resourceLoader = new DefaultResourceLoader({ cwd: root, agentDir: root, settingsManager, noExtensions: true, noSkills: true, noThemes: true, noContextFiles: true, noPromptTemplates: true, extensionFactories: [extension, (pi: any) => {
+  const settingsManager = SettingsManager.inMemory({ tuiMode, fullscreenCopyOnSelect: false, theme: 'dark', quietStartup: true, showCacheMissNotices: false, hideThinkingBlock: true, compaction: { enabled: false }, retry: { enabled: retry, maxRetries: 1, baseDelayMs: 1 }, packages: [] });
+  const resourceLoader = new DefaultResourceLoader({ cwd: root, agentDir: root, settingsManager,
+    additionalExtensionPaths: withAsk ? [fileURLToPath(new URL('../../ask-user-question/index.ts', import.meta.url))] : [], noExtensions: true, noSkills: true, noThemes: true, noContextFiles: true, noPromptTemplates: true, extensionFactories: [extension, (pi: any) => {
     let continued = false;
     pi.on('turn_end', (event: any) => {
       if (continuation === 'none' || continued) return;
@@ -70,17 +72,35 @@ async function scenario(responses: any[], retry = false, continuation: 'none' | 
     pi.registerTool({ name: 'fail', label: 'fail', description: 'fake', parameters, async execute() { throw new Error('PRIVATE_TOOL_FAILURE'); } });
   }] });
   await resourceLoader.reload();
+  expect(resourceLoader.getExtensions().errors).toEqual([]);
   const services = { cwd: root, agentDir: root, modelRuntime, settingsManager, resourceLoader, diagnostics: [] };
   const start = async () => {
-    const runtime = await createAgentSessionRuntime(async ({ sessionManager }: any) => ({ ...(await createAgentSessionFromServices({ services, sessionManager, model: modelRuntime.getModel('acceptance-fixture', 'fake'), tools: ['outer', 'inner', 'fail'] })), services, diagnostics: [] }), { cwd: root, agentDir: root, sessionManager: manager });
-    const mode = new InteractiveMode(runtime, { terminal, tuiMode: 'regular', initialThemeSetting: 'dark' });
+    const runtime = await createAgentSessionRuntime(async ({ sessionManager }: any) => ({ ...(await createAgentSessionFromServices({ services, sessionManager, model: modelRuntime.getModel('acceptance-fixture', 'fake'), tools: withAsk ? ['outer', 'inner', 'fail', 'ask_user_question'] : ['outer', 'inner', 'fail'] })), services, diagnostics: [] }), { cwd: root, agentDir: root, sessionManager: manager });
+    const mode = new InteractiveMode(runtime, { terminal, tuiMode, initialThemeSetting: 'dark' });
     await mode.init(); return { runtime, mode };
   };
   try { current = await start(); } catch (e) { await rm(root, { recursive: true, force: true }); throw e; }
   return { manager, terminal, rendered, rawRendered, snapshots, calls: () => calls,
     expanded: () => context.ui.getToolsExpanded(),
+    flush: () => captured.renderNow(),
+    screen: (): string[] => captured.getScreenLines().map((line: string) => Bun.stripANSI(line)),
+    scrollTop() { captured.scrollToTop(); captured.renderNow(); },
+    viewportTop: () => captured.viewportTop,
+    hasSelection: () => captured.hasActiveSelection(),
+    switchMode(mode: 'regular' | 'fullscreen') { tuiMode = mode; current.mode.switchTuiMode(mode); captured.renderNow(); },
+    clickSummary(title: string) {
+      captured.renderNow();
+      const y = captured.getScreenLines().findIndex((line: string) => Bun.stripANSI(line).includes(title) && /steps?/.test(line));
+      expect(y).toBeGreaterThanOrEqual(0);
+      terminal.input?.(`\x1b[<0;3;${y + 1}M`); terminal.input?.(`\x1b[<0;3;${y + 1}m`);
+      captured.renderNow();
+    },
     key: (data: string) => terminal.input?.(data),
     dialog: () => context.ui.input('Modal fixture'),
+    overlay: () => context.ui.custom((_tui: any, _theme: any, _keys: any, done: any) => ({
+      render: () => Array(14).fill('MODAL_POINTER_SHIELD'), invalidate() {},
+      handleInput(data: string) { if (data === '\x1b') done(); },
+    }), { overlay: true, overlayOptions: { row: 0, col: 0, width: 120, maxHeight: 14 } }),
     prompt: (text = 'acceptance fixture') => current.runtime.session.prompt(text),
     queue: () => current.runtime.session.followUp('queued fixture'),
     idle: () => current.runtime.session.waitForIdle(),
@@ -89,6 +109,9 @@ async function scenario(responses: any[], retry = false, continuation: 'none' | 
     async close() { current.mode.stop(); await current.runtime.dispose(); await rm(root, { recursive: true, force: true }); },
   };
 }
+for (const tuiMode of ['regular', 'fullscreen'] as const) describe(tuiMode, () => {
+const scenario = (responses: any[], retry = false, continuation: 'none' | 'empty' | 'hidden' = 'none') => createScenario(responses, retry, continuation, tuiMode);
+
 test('real InteractiveMode: prose streams, nested errors hidden, settled summaries match resume', async () => {
   const s = await scenario([
     { content: [thought(), prose('Checking configuration.'), tool('outer', 'outer'), tool('failure', 'fail')], stopReason: 'toolUse' },
@@ -329,5 +352,97 @@ test('real InteractiveMode: transient retry hidden, final retry failure emits on
     expect(text.match(/模型请求失败/g)).toHaveLength(1);
     expect(text).not.toContain('Retry failed after');
     expect(text).toContain('2 steps');
+  } finally { await s.close(); }
+}, 30000);
+});
+
+test('fullscreen coexists with our real Ask questionnaire and returns keyboard focus after answering', async () => {
+  const s = await createScenario([
+    { content: [thought(), { type: 'toolCall', id: 'question', name: 'ask_user_question', arguments: { questions: [{
+      question: 'FULLSCREEN_QUESTION?', header: 'Choice', options: [
+        { label: 'Continue', description: 'Continue the fixture' }, { label: 'Stop', description: 'Stop the fixture' },
+      ],
+    }] } }], stopReason: 'toolUse' },
+    { content: [prose('ANSWER_RECEIVED')], stopReason: 'stop' },
+  ], false, 'none', 'fullscreen', true);
+  try {
+    const run = s.prompt();
+    for (let i = 0; i < 200 && !s.screen().join('\n').includes('FULLSCREEN_QUESTION'); i++) { await Bun.sleep(10); s.flush(); }
+    expect(s.screen().join('\n')).toContain('FULLSCREEN_QUESTION');
+    s.key('\x0f'); expect(s.expanded()).toBe(false);
+    s.key('\r'); await run; await s.idle();
+    expect(s.rendered()).toContain('ANSWER_RECEIVED'); expect(s.rendered()).toContain('2 steps');
+    s.key('\x0f'); s.flush(); expect(s.expanded()).toBe(true); expect(s.rendered()).toContain('PRIVATE_THINKING_DETAIL');
+  } finally { await s.close(); }
+}, 30000);
+
+test('fullscreen native clicks: independent groups, global overrides, reload and renderer switching', async () => {
+  const s = await createScenario([
+    { content: [thought('First'), tool('outer', 'outer'), prose('VISIBLE_MIDDLE'), thought('Second'), tool('fail', 'fail')], stopReason: 'toolUse' },
+    { content: [prose('VISIBLE_FINAL')], stopReason: 'stop' },
+  ], false, 'none', 'fullscreen');
+  try {
+    await s.prompt(); await s.idle(); s.scrollTop();
+    const entries = JSON.stringify(s.manager.getBranch());
+    s.clickSummary('outer');
+    expect(s.expanded()).toBe(false);
+    expect(s.rendered()).toContain('PRIVATE_OUTER_RESULT'); expect(s.rendered()).not.toContain('PRIVATE_TOOL_FAILURE');
+    expect(s.rendered().match(/PRIVATE_THINKING_DETAIL/g)).toHaveLength(1);
+    await s.reload();
+    expect(s.rendered()).not.toContain('PRIVATE_OUTER_RESULT');
+    s.scrollTop(); s.clickSummary('fail'); expect(s.rendered()).toContain('PRIVATE_TOOL_FAILURE');
+    s.key('\x0f'); s.flush(); expect(s.expanded()).toBe(true);
+    expect(s.rendered()).toContain('PRIVATE_OUTER_RESULT'); expect(s.rendered()).toContain('PRIVATE_TOOL_FAILURE');
+    s.scrollTop(); s.clickSummary('outer');
+    expect(s.rendered()).not.toContain('PRIVATE_OUTER_RESULT'); expect(s.rendered()).toContain('PRIVATE_TOOL_FAILURE');
+    s.key('\x0f'); s.flush(); expect(s.rendered()).not.toContain('PRIVATE_THINKING_DETAIL');
+    s.scrollTop(); s.clickSummary('outer');
+    s.switchMode('regular'); expect(s.rendered()).not.toContain('PRIVATE_OUTER_RESULT');
+    s.switchMode('fullscreen'); s.scrollTop();
+    expect(s.rendered()).not.toContain('PRIVATE_OUTER_RESULT');
+    s.clickSummary('fail'); expect(s.rendered()).toContain('PRIVATE_TOOL_FAILURE');
+    expect(JSON.stringify(s.manager.getBranch())).toBe(entries);
+    expect(s.rendered()).toContain('VISIBLE_MIDDLE'); expect(s.rendered()).toContain('VISIBLE_FINAL');
+  } finally { await s.close(); }
+}, 30000);
+
+test('fullscreen native click during streaming keeps the group open for later tools', async () => {
+  const s = await createScenario([
+    { content: [thought(), tool('outer', 'outer')], stopReason: 'toolUse' },
+    { content: [thought('Complete'), prose('Done.')], stopReason: 'stop' },
+  ], false, 'none', 'fullscreen');
+  try {
+    const run = s.prompt();
+    for (let i = 0; i < 100 && !s.rendered().includes('Inspect'); i++) await Bun.sleep(5);
+    s.clickSummary('Inspect');
+    await run; await s.idle();
+    expect(s.expanded()).toBe(false); expect(s.rendered()).toContain('PRIVATE_OUTER_RESULT');
+    expect(s.rendered().match(/PRIVATE_THINKING_DETAIL/g)).toHaveLength(2);
+    await s.resume(); expect(s.rendered()).not.toContain('PRIVATE_OUTER_RESULT');
+    s.scrollTop(); s.clickSummary('Complete'); expect(s.rendered()).toContain('PRIVATE_OUTER_RESULT');
+  } finally { await s.close(); }
+}, 30000);
+
+test('fullscreen keeps native wheel scrolling, transcript selection and modal mouse shielding', async () => {
+  const s = await createScenario([
+    { content: [thought(), prose(Array.from({ length: 55 }, (_, i) => `SELECTABLE_${i} text for dragging`).join('\n\n'))], stopReason: 'stop' },
+  ], false, 'none', 'fullscreen');
+  try {
+    await s.prompt(); s.flush();
+    const end = s.viewportTop(); expect(end).toBeGreaterThan(0);
+    s.key('\x1b[<64;3;5M'); s.flush(); expect(s.viewportTop()).toBeLessThan(end);
+    const y = s.screen().findIndex(line => line.includes('SELECTABLE_')) + 1; expect(y).toBeGreaterThan(0);
+    s.key(`\x1b[<0;3;${y}M`); s.key(`\x1b[<32;10;${y}M`); s.key(`\x1b[<0;10;${y}m`);
+    expect(s.hasSelection()).toBe(true); // Copy-on-select is off in this synthetic fixture; never touch the real clipboard.
+    expect(s.rendered()).not.toContain('PRIVATE_THINKING_DETAIL');
+    s.scrollTop();
+    const headerY = s.screen().findIndex(line => line.includes('Inspect') && /steps?/.test(line)) + 1;
+    expect(headerY).toBeGreaterThan(0);
+    const dialog = s.overlay(); await Bun.sleep(20); s.flush();
+    s.key(`\x1b[<0;3;${headerY}M`); s.key(`\x1b[<0;3;${headerY}m`); s.flush();
+    expect(s.rendered()).not.toContain('PRIVATE_THINKING_DETAIL');
+    s.key('\x0f'); expect(s.expanded()).toBe(false);
+    s.key('\x1b'); await dialog;
+    s.key('\x0f'); s.flush(); expect(s.expanded()).toBe(true);
   } finally { await s.close(); }
 }, 30000);

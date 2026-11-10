@@ -1,11 +1,11 @@
 {
   "name": "pi-activity-summary",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Regular-TUI activity summaries for Pi 1.5.0",
+  "description": "Regular and fullscreen activity summaries for Pi",
   "pi": { "extensions": ["./src/index.ts"] },
   "scripts": { "test": "bun test", "typecheck": "bunx --package typescript@7.0.2 tsc --noEmit" },
-  "peerDependencies": { "@earendil-works/pi-coding-agent": "1.5.0", "@earendil-works/pi-tui": "*" },
+  "peerDependencies": { "@earendil-works/pi-coding-agent": "*", "@earendil-works/pi-tui": "*" },
   "files": ["src", "README.md", "DESIGN.md"]
 }

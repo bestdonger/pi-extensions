@@ -1,4 +1,4 @@
-import { VERSION, type ExtensionAPI, type ExtensionContext } from '@earendil-works/pi-coding-agent';
+import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { ActivityState } from './state.ts';
 import { mount } from './bridge.ts';
 
@@ -17,14 +17,14 @@ export default function activitySummary(pi: ExtensionAPI) {
   };
   pi.on('session_start', (_event, ctx) => {
     if (ctx.mode !== 'tui') return;
-    if (VERSION !== '1.5.0') { warn(ctx); return; }
     restore(ctx);
     // A zero-line widget obtains the host TUI without replacing input, footer, or dialogs.
     ctx.ui.setWidget('pi-activity-summary/bridge', (tui, theme) => {
       release?.();
       requestRender = () => tui.requestRender();
       // Read Pi's native expansion state; its existing Ctrl+O handler owns the
-      // keybinding, focus rules and tool renderer flags (no competing listener).
+      // keybinding and focus rules (no competing listener). Fullscreen clicks
+      // add view-local overrides without changing this global host flag.
       try { release = mount(tui, () => state, s => ctx.ui.theme.fg('dim', s), () => warn(ctx),
         () => ctx.ui.theme, () => ctx.ui.getToolsExpanded?.() ?? false); }
       catch { release = undefined; }

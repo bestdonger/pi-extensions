@@ -8,7 +8,7 @@
 pi-extensions/
 ├── packages/
 │   ├── ask-user-question/     # 结构化问答
-│   ├── activity-summary/     # regular TUI 活动摘要
+│   ├── activity-summary/     # regular/fullscreen TUI 活动摘要
 │   ├── rex-prompt-navigation/ # Rex 用户消息导航
 │   └── fast-mode/             # GPT Fast 优先处理开关
 ├── docs/
@@ -25,7 +25,7 @@ pi-extensions/
 
 ## 环境与依赖
 
-已验证宿主为 **Pi 1.5.0**。需要 Node.js（支持直接执行 TypeScript 的版本）和 Bun。GitHub 安装会自动准备依赖；本地开发在根目录运行 `npm install --legacy-peer-deps --ignore-scripts`，使用已提交的锁文件，不自动安装宿主 peers。Activity Summary 和 Rex Prompt Navigation 没有额外运行依赖。
+Activity Summary 面向新版 Pi，**不设置版本白名单或上限**，宿主 peers 声明为 `*`；本次实际回归基线为 **Pi 1.5.1 regular/fullscreen**。兼容性按实际布局判断，不需随宿主版本号升级改代码。Rex Prompt Navigation 仍仅验证 Pi 1.5.0 regular。需要 Node.js（支持直接执行 TypeScript 的版本）和 Bun。GitHub 安装会自动准备依赖；本地开发在根目录运行 `npm install --legacy-peer-deps --ignore-scripts`，使用已提交的锁文件，不自动安装宿主 peers。Activity Summary 和 Rex Prompt Navigation 没有额外运行依赖。
 
 Pi 的宿主模块通过 peer dependencies 提供，不要给插件打包另一份宿主。测试时 Activity Summary 需要能直接解析宿主模块。本机采用软链接：
 
