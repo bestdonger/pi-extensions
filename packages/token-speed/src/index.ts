@@ -10,9 +10,9 @@ interface SpeedSample {
 }
 
 export function formatSpeed(outputTokens: number, decodeMs: number): string {
-	if (decodeMs <= 0) return "⚡—tok/s";
+	if (decodeMs <= 0) return "↯—tok/s";
 	const rate = outputTokens * 1000 / decodeMs;
-	return `⚡${rate >= 10 ? Math.round(rate) : Math.round(rate * 10) / 10}tok/s`;
+	return `↯${rate >= 10 ? Math.round(rate) : Math.round(rate * 10) / 10}tok/s`;
 }
 
 function isToken(event: AssistantMessageEvent): boolean {

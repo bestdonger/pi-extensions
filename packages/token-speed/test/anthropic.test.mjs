@@ -56,7 +56,7 @@ test("native Anthropic initial usage is ignored until the response settles", asy
 		if (event.type === "text_delta") {
 			sawDelta = true;
 			assert.equal(event.partial.usage.output, 1);
-			assert.equal(status, "⚡—tok/s");
+			assert.equal(status, "↯—tok/s");
 			assert.equal(readings.length, 0);
 		}
 		if (event.type === "done") {

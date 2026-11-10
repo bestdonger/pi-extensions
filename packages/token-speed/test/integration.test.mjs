@@ -13,7 +13,13 @@ const fromHost = path => import(pathToFileURL(join(host, path)).href);
 const { createAgentSession, DefaultResourceLoader, FooterComponent, initTheme, ModelRuntime, SessionManager, SettingsManager } = await fromHost("dist/index.js");
 const { createProvider } = await fromHost("node_modules/@earendil-works/pi-ai/dist/models.js");
 const { createAssistantMessageEventStream } = await fromHost("node_modules/@earendil-works/pi-ai/dist/utils/event-stream.js");
+const { visibleWidth } = await fromHost("node_modules/@earendil-works/pi-tui/dist/index.js");
 const samples = manager => manager.getBranch().filter(entry => entry.type === "custom" && entry.customType === "token-speed-sample-v1").map(entry => entry.data);
+
+test("speed icon occupies a single terminal column", () => {
+	assert.equal(visibleWidth(formatSpeed(163, 1000)), 9);
+	assert.equal(visibleWidth(formatSpeed(0, 0)), 7);
+});
 
 test("real SDK settles cumulative decode speed, persists it outside model context and restores on reload", async () => {
 	const dir = await mkdtemp(join(tmpdir(), "pi-speed-sdk-"));
@@ -93,7 +99,7 @@ test("real SDK settles cumulative decode speed, persists it outside model contex
 				setStatus(key, text) { if (key === "token-speed") statuses.push(text); },
 			},
 		});
-		assert.equal(statuses.at(-1), "⚡—tok/s");
+		assert.equal(statuses.at(-1), "↯—tok/s");
 		await session.prompt("first offline fixture");
 		const first = samples(manager)[0];
 		const firstMessage = manager.getBranch().find(entry => entry.type === "message" && entry.message.role === "assistant");
@@ -110,7 +116,7 @@ test("real SDK settles cumulative decode speed, persists it outside model contex
 		const totalMs = readings.reduce((sum, reading) => sum + reading.decodeMs, 0);
 		assert.equal(statuses.at(-1), formatSpeed(100, totalMs));
 		assert.notEqual(statuses.at(-1), formatSpeed(20, readings[1].decodeMs));
-		assert.equal(observations[0].during, "⚡—tok/s");
+		assert.equal(observations[0].during, "↯—tok/s");
 		assert.equal(observations[1].during, firstSpeed);
 		for (const reading of observations) assert.equal(reading.writesDuring, reading.writesBefore);
 		for (const context of contexts) {

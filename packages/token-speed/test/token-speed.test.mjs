@@ -69,24 +69,24 @@ function harness(t, hasUI = true) {
 }
 
 test("format is compact, with a new speed icon and no spaces", () => {
-	assert.equal(formatSpeed(0, 0), "⚡—tok/s");
-	assert.equal(formatSpeed(200, 4000), "⚡50tok/s");
-	assert.equal(formatSpeed(165, 2000), "⚡83tok/s");
-	assert.equal(formatSpeed(17, 2000), "⚡8.5tok/s");
-	assert.equal(formatSpeed(1, 3000), "⚡0.3tok/s");
+	assert.equal(formatSpeed(0, 0), "↯—tok/s");
+	assert.equal(formatSpeed(200, 4000), "↯50tok/s");
+	assert.equal(formatSpeed(165, 2000), "↯83tok/s");
+	assert.equal(formatSpeed(17, 2000), "↯8.5tok/s");
+	assert.equal(formatSpeed(1, 3000), "↯0.3tok/s");
 	assert.equal(formatSpeed(20, 1000).includes(" "), false);
 });
 
 test("startup shows a placeholder without creating a timer", t => {
 	const h = harness(t);
-	assert.equal(h.status, "⚡—tok/s");
+	assert.equal(h.status, "↯—tok/s");
 	assert.equal(h.records.length, 0);
 });
 
 test("request wait and native whole-response duration are not decode time", t => {
 	const h = harness(t);
 	h.respond(100, 1000, 20_000, { durationMs: 21_000 });
-	assert.equal(h.status, "⚡100tok/s");
+	assert.equal(h.status, "↯100tok/s");
 	assert.deepEqual(h.records, [sample(100, 1000)]);
 });
 
@@ -94,7 +94,7 @@ test("cumulative speed is total tokens / total decode time, not average rates or
 	const h = harness(t);
 	h.respond(100, 1000);
 	h.respond(100, 9000);
-	assert.equal(h.status, "⚡20tok/s"); // Not (100 + 11.1) / 2, and not 11.1.
+	assert.equal(h.status, "↯20tok/s"); // Not (100 + 11.1) / 2, and not 11.1.
 	assert.deepEqual(h.records, [sample(100, 1000), sample(100, 9000)]);
 });
 
@@ -106,11 +106,11 @@ test("streaming never publishes estimates or initial usage snapshots", t => {
 	h.update("text_delta", "x".repeat(400), assistant(1));
 	for (let n = 0; n < 1000; n++) h.update("text_delta", "more", assistant(1));
 	h.advance(2000);
-	assert.equal(h.status, "⚡—tok/s");
+	assert.equal(h.status, "↯—tok/s");
 	assert.equal(h.writes.length, writes);
 	assert.equal(h.records.length, 0);
 	h.finish(100);
-	assert.equal(h.status, "⚡50tok/s");
+	assert.equal(h.status, "↯50tok/s");
 	assert.deepEqual(h.records, [sample(100, 2000)]);
 });
 
@@ -127,7 +127,7 @@ for (const type of ["text_delta", "thinking_delta", "toolcall_delta"]) {
 		h.advance(1000);
 		h.finish(80);
 		assert.deepEqual(h.records, [sample(80, 2000)]);
-		assert.equal(h.status, "⚡40tok/s");
+		assert.equal(h.status, "↯40tok/s");
 	});
 }
 
@@ -152,14 +152,14 @@ test("block starts, ends and unnamed empty tool calls do not invent a first toke
 	h.update("toolcall_start", "", assistant(0, { content: [{ type: "toolCall", id: "", name: "", arguments: {} }] }));
 	h.advance(1000);
 	h.finish(100);
-	assert.equal(h.status, "⚡—tok/s");
+	assert.equal(h.status, "↯—tok/s");
 	assert.equal(h.records.length, 0);
 });
 
 test("reasoning output is taken from final usage without double counting content", t => {
 	const h = harness(t);
 	h.respond(180, 3000, 1000, { content: [{ type: "thinking", thinking: "brief visible summary" }] });
-	assert.equal(h.status, "⚡60tok/s");
+	assert.equal(h.status, "↯60tok/s");
 });
 
 test("input, cache and cost fields are not included", t => {
@@ -171,7 +171,7 @@ test("input, cache and cost fields are not included", t => {
 	h.update();
 	h.advance(2000);
 	h.emit("message_end", { message });
-	assert.equal(h.status, "⚡50tok/s");
+	assert.equal(h.status, "↯50tok/s");
 });
 
 for (const stopReason of ["aborted", "error"]) {
@@ -179,7 +179,7 @@ for (const stopReason of ["aborted", "error"]) {
 		const h = harness(t);
 		h.respond(80, 2000);
 		h.respond(1, 10000, 1000, { stopReason });
-		assert.equal(h.status, "⚡40tok/s");
+		assert.equal(h.status, "↯40tok/s");
 		assert.equal(h.records.length, 1);
 	});
 }
@@ -187,7 +187,7 @@ for (const stopReason of ["aborted", "error"]) {
 test("length-limited successful responses contribute their final usage", t => {
 	const h = harness(t);
 	h.respond(80, 2000, 1000, { stopReason: "length" });
-	assert.equal(h.status, "⚡40tok/s");
+	assert.equal(h.status, "↯40tok/s");
 });
 
 test("missing/zero output usage, absent first tokens and zero decode time do not enter totals", t => {
@@ -199,7 +199,7 @@ test("missing/zero output usage, absent first tokens and zero decode time do not
 	h.advance(1000);
 	h.finish(500);
 	h.finish(999, { durationMs: 1000 });
-	assert.equal(h.status, "⚡40tok/s");
+	assert.equal(h.status, "↯40tok/s");
 	assert.equal(h.records.length, 1);
 });
 
@@ -217,10 +217,10 @@ test("tool execution, waiting and empty responses keep the same value without re
 	h.emit("model_select");
 	h.respond(0, 1000, 60_000);
 	h.advance(3600_000);
-	assert.equal(h.status, "⚡40tok/s");
+	assert.equal(h.status, "↯40tok/s");
 	assert.equal(h.writes.length, writes);
 	h.respond(120, 3000);
-	assert.equal(h.status, "⚡40tok/s");
+	assert.equal(h.status, "↯40tok/s");
 	assert.equal(h.writes.length, writes); // Even an unchanged rounded result is deduplicated.
 });
 
@@ -232,7 +232,7 @@ test("changing models retains whole-session totals and does not interrupt curren
 	h.emit("model_select");
 	h.advance(4000);
 	h.finish(100, { provider: "anthropic", model: "claude-sonnet-4-5", api: "anthropic-messages" });
-	assert.equal(h.status, "⚡40tok/s");
+	assert.equal(h.status, "↯40tok/s");
 });
 
 for (const name of ["session_start", "session_tree"]) {
@@ -246,10 +246,10 @@ for (const name of ["session_start", "session_tree"]) {
 			{ type: "message", message: assistant(2000, { durationMs: 1000 }) },
 		]);
 		h.emit(name);
-		assert.equal(h.status, "⚡20tok/s");
+		assert.equal(h.status, "↯20tok/s");
 		assert.equal(h.records.length, 0);
 		h.respond(100, 5000);
-		assert.equal(h.status, "⚡20tok/s");
+		assert.equal(h.status, "↯20tok/s");
 	});
 }
 
@@ -257,7 +257,7 @@ test("old history without first-token samples is not assigned invented decode ti
 	const h = harness(t);
 	h.setBranch([{ type: "message", message: assistant(2000, { durationMs: 1000 }) }]);
 	h.emit("session_start");
-	assert.equal(h.status, "⚡—tok/s");
+	assert.equal(h.status, "↯—tok/s");
 });
 
 test("reloads do not count samples twice and abandoned branches cannot leak statistics", t => {
@@ -266,13 +266,13 @@ test("reloads do not count samples twice and abandoned branches cannot leak stat
 	h.emit("session_start");
 	h.emit("session_start");
 	h.respond(100, 9000);
-	assert.equal(h.status, "⚡20tok/s");
+	assert.equal(h.status, "↯20tok/s");
 	h.setBranch([sample(30, 1000)]);
 	h.emit("session_tree");
-	assert.equal(h.status, "⚡30tok/s");
+	assert.equal(h.status, "↯30tok/s");
 	h.setBranch([]);
 	h.emit("session_start");
-	assert.equal(h.status, "⚡—tok/s");
+	assert.equal(h.status, "↯—tok/s");
 });
 
 test("branch navigation discards unfinished timing", t => {
@@ -294,7 +294,7 @@ test("agent_end discards an unfinished stream without counting it on the next re
 	h.finish(100);
 	assert.equal(h.records.length, 0);
 	h.respond(20, 1000);
-	assert.equal(h.status, "⚡20tok/s");
+	assert.equal(h.status, "↯20tok/s");
 });
 
 test("headless execution records samples but never calls UI or starts a timer", t => {

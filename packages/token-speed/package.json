@@ -1,6 +1,6 @@
 {
   "name": "@bestdonger/pi-token-speed",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "Cumulative session decode throughput in Pi's status line, using settled provider usage",
