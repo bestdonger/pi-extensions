@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Ask questionnaires, activity summaries, Rex prompt navigation and GPT Fast mode for Pi",
+  "description": "Ask questionnaires, activity summaries, Rex navigation, GPT Fast mode and live token speed for Pi",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bestdonger/pi-extensions.git"
@@ -15,7 +15,8 @@
       "./packages/ask-user-question/index.ts",
       "./packages/activity-summary/src/index.ts",
       "./packages/rex-prompt-navigation/src/index.ts",
-      "./packages/fast-mode/src/index.ts"
+      "./packages/fast-mode/src/index.ts",
+      "./packages/token-speed/src/index.ts"
     ]
   }
 }

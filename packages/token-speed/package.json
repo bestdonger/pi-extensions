@@ -1,0 +1,22 @@
+{
+  "name": "@bestdonger/pi-token-speed",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Live token throughput in Pi's status line, with final provider usage",
+  "keywords": ["pi-package", "pi-extension"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bestdonger/pi-extensions.git",
+    "directory": "packages/token-speed"
+  },
+  "pi": { "extensions": ["./src/index.ts"] },
+  "scripts": {
+    "test": "node --import ./test/host-modules.mjs --test test/*.test.mjs"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-ai": "*"
+  },
+  "files": ["src", "README.md"]
+}

@@ -4,7 +4,7 @@
 
 **需要选择时，问清楚。执行过程中，看重点。**
 
-为 Pi 定制的结构化问答、终端活动摘要、Rex 消息导航与 GPT Fast 模式。
+为 Pi 定制的结构化问答、终端活动摘要、Rex 消息导航、GPT Fast 模式与实时 token 速度。
 
 [插件预览](#插件预览) · [快速开始](#快速开始) · [开发指南](docs/development.md) · [反馈问题](https://github.com/bestdonger/pi-extensions/issues)
 
@@ -63,6 +63,12 @@ Priority 可能消耗更多费用或额度，是否生效由上游决定。
 
 [开关命令、安装与测试 →](packages/fast-mode/README.md)
 
+### Token Speed
+
+状态栏每 250 ms 更新当前响应的平均输出速度，例如 `↑ ~42.6 tok/s`。生成中标注估算，正常结束后用 provider token 用量和宿主耗时校准；不替换原生 footer，可与 Fast Mode 同时显示。速度包含首 token、思考和网络等待。
+
+[统计口径、安装与测试 →](packages/token-speed/README.md)
+
 ## 快速开始
 
 > [!IMPORTANT]
@@ -72,7 +78,7 @@ Priority 可能消耗更多费用或额度，是否生效由上游决定。
 pi install git:github.com/bestdonger/pi-extensions
 ```
 
-根包加载四个插件，Pi 自动安装 workspace 运行依赖；Ask 的配置依赖固定为 `@juicesharp/rpiv-config@2.15.0`，不安装第二份 Pi 宿主。
+根包加载五个插件，Pi 自动安装 workspace 运行依赖；Ask 的配置依赖固定为 `@juicesharp/rpiv-config@2.15.0`，不安装第二份 Pi 宿主。
 
 在 Pi 中执行 `/reload`，或重新开启会话。以后只更新本仓库：
 
@@ -103,6 +109,7 @@ pi update git:github.com/bestdonger/pi-extensions
 | 了解活动统计、展开和会话恢复 | [Activity Summary](packages/activity-summary/README.md) |
 | 使用 Rex 用户消息导航 | [Rex Prompt Navigation](packages/rex-prompt-navigation/README.md) |
 | 开关 GPT Fast 优先处理模式 | [GPT Fast Mode](packages/fast-mode/README.md) |
+| 实时查看 token 生成速度 | [Token Speed](packages/token-speed/README.md) |
 | 修改代码、运行测试、更新预览 | [开发指南](docs/development.md) |
 | 报告问题或提出建议 | [GitHub Issues](https://github.com/bestdonger/pi-extensions/issues) |
 

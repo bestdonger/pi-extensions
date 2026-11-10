@@ -9,7 +9,7 @@ const root = process.env.PI_EXTENSIONS_ROOT || fileURLToPath(new URL('../', impo
 const host = process.env.PI_PACKAGE_ROOT || '/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent';
 const { DefaultResourceLoader, SettingsManager } = await import(pathToFileURL(join(host, 'dist/index.js')).href);
 
-test('root package loads exactly four extensions with host-provided peers', async () => {
+test('root package loads exactly five extensions with host-provided peers', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'pi-root-package-'));
   try {
     const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
@@ -18,6 +18,7 @@ test('root package loads exactly four extensions with host-provided peers', asyn
       'packages/activity-summary/src/index.ts',
       'packages/rex-prompt-navigation/src/index.ts',
       'packages/fast-mode/src/index.ts',
+      'packages/token-speed/src/index.ts',
     ].map(path => resolve(root, path)).sort();
     assert.deepEqual(manifest.pi.extensions.map(path => resolve(root, path)).sort(), expected);
     const loader = new DefaultResourceLoader({
