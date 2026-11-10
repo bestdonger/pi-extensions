@@ -9,7 +9,8 @@ pi-extensions/
 ├── packages/
 │   ├── ask-user-question/     # 结构化问答
 │   ├── activity-summary/     # regular TUI 活动摘要
-│   └── rex-prompt-navigation/ # Rex 用户消息导航
+│   ├── rex-prompt-navigation/ # Rex 用户消息导航
+│   └── fast-mode/             # GPT Fast 优先处理开关
 ├── docs/
 │   └── assets/               # 真实组件渲染预览
 └── scripts/
@@ -18,7 +19,7 @@ pi-extensions/
 
 每个插件有独立的 `package.json`、依赖、测试和版本。Ask 使用 `@bestdonger/pi-ask-user-question`，从 `0.1.0` 开始独立版本管理；Activity Summary 使用 `pi-activity-summary`。当前均不发布 npm。
 
-正常使用从 GitHub 安装根包，根 `package.json` 通过 workspaces 安装依赖并声明三个扩展入口。各插件继续独立维护；不要在 `~/.pi/agent/git/` 的托管副本中开发。
+正常使用从 GitHub 安装根包，根 `package.json` 通过 workspaces 安装依赖并声明四个扩展入口。各插件继续独立维护；不要在 `~/.pi/agent/git/` 的托管副本中开发。
 
 开发时移除 GitHub 包声明，改用 `pi install /absolute/path/pi-extensions` 加载工作区，修改后执行 `/reload` 或重开会话。不要同时加载 GitHub 和本地副本。`pi update --extensions` 不会覆盖本地路径包；同步开发仓库使用 Git，拉取前先检查工作区。
 
@@ -57,11 +58,14 @@ npm run test:package
 (cd packages/ask-user-question && npm test)
 (cd packages/activity-summary && bun test)
 (cd packages/rex-prompt-navigation && bun test)
+(cd packages/fast-mode && npm test)
 ```
 
 Ask 集成测试读取 `PI_PACKAGE_ROOT`，默认是 Homebrew 的 Pi 路径。Activity Summary 部分测试仍依赖本机路径及已安装的参考插件；在其他机器运行前需检查 `test/loader.test.ts`。当前没有跨平台 CI，不将本机通过等同于所有环境均可用。
 
 测试使用示例消息、虚拟工具和内存 provider，不调用真实模型。自动化组件测试不替代终端、通知及快捷键的人工验收。
+
+Fast Mode 无额外运行依赖，单元测试直接使用 Node.js，不调用模型 API。已在 Pi 1.5.1 验证；支持 OpenAI Responses、Codex Responses 和 Chat Completions 的 GPT 请求。
 
 ## 生成首页预览
 

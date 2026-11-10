@@ -4,7 +4,7 @@
 
 **需要选择时，问清楚。执行过程中，看重点。**
 
-为 Pi 定制的结构化问答、终端活动摘要与 Rex 消息导航。
+为 Pi 定制的结构化问答、终端活动摘要、Rex 消息导航与 GPT Fast 模式。
 
 [插件预览](#插件预览) · [快速开始](#快速开始) · [开发指南](docs/development.md) · [反馈问题](https://github.com/bestdonger/pi-extensions/issues)
 
@@ -55,6 +55,14 @@
 
 [实现、兼容边界与验收说明 →](packages/rex-prompt-navigation/README.md)
 
+### GPT Fast Mode
+
+用 `/fast` 快速切换 GPT 的优先处理档位，状态栏显示开关；不改变思考等级。支持 OpenAI API、Codex 协议和兼容网关，按会话分支保存状态，新会话默认关闭。已验证 **Pi 1.5.1**。
+
+Priority 可能消耗更多费用或额度，是否生效由上游决定。
+
+[开关命令、安装与测试 →](packages/fast-mode/README.md)
+
 ## 快速开始
 
 > [!IMPORTANT]
@@ -64,7 +72,7 @@
 pi install git:github.com/bestdonger/pi-extensions
 ```
 
-根包加载三个插件，Pi 自动安装 workspace 运行依赖；Ask 的配置依赖固定为 `@juicesharp/rpiv-config@2.15.0`，不安装第二份 Pi 宿主。
+根包加载四个插件，Pi 自动安装 workspace 运行依赖；Ask 的配置依赖固定为 `@juicesharp/rpiv-config@2.15.0`，不安装第二份 Pi 宿主。
 
 在 Pi 中执行 `/reload`，或重新开启会话。以后只更新本仓库：
 
@@ -94,6 +102,7 @@ pi update git:github.com/bestdonger/pi-extensions
 | 调整问答快捷键、预览与配置 | [Ask User Question](packages/ask-user-question/README.md) |
 | 了解活动统计、展开和会话恢复 | [Activity Summary](packages/activity-summary/README.md) |
 | 使用 Rex 用户消息导航 | [Rex Prompt Navigation](packages/rex-prompt-navigation/README.md) |
+| 开关 GPT Fast 优先处理模式 | [GPT Fast Mode](packages/fast-mode/README.md) |
 | 修改代码、运行测试、更新预览 | [开发指南](docs/development.md) |
 | 报告问题或提出建议 | [GitHub Issues](https://github.com/bestdonger/pi-extensions/issues) |
 

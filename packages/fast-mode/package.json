@@ -1,0 +1,32 @@
+{
+  "name": "@bestdonger/pi-fast-mode",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Toggle GPT priority service tier from Pi with /fast without changing reasoning",
+  "keywords": [
+    "pi-package",
+    "pi-extension"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bestdonger/pi-extensions.git",
+    "directory": "packages/fast-mode"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --import ./test/host-modules.mjs --test test/*.test.mjs"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-ai": "*"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ]
+}
