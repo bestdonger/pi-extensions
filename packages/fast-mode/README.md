@@ -38,12 +38,12 @@ pi install /absolute/path/pi-extensions/packages/fast-mode
 | `/fast off` | 关闭 |
 | `/fast status` | 查看当前状态，不切换 |
 
-- 状态栏显示 `fast: on` / `fast: off`。
+- 状态栏显示 `fast:on` / `fast:off`，不加空格。
 - 新会话默认关闭；开关保存在当前会话分支，支持恢复会话、重新加载和树导航。
 - 对 GPT 模型的 `openai-responses`、`openai-codex-responses`、`openai-completions` 请求生效，包括使用这些协议的兼容网关。
 - 开启发送 `service_tier: "priority"`，关闭显式发送 `service_tier: "default"`。此扩展接管适用请求的 `service_tier`，会覆盖 `models.json` 中的该字段，但不修改配置文件。
 - 不修改模型、思考等级、工具或上下文。
-- 切换到其他模型不改请求；开启状态显示为 `fast: on (GPT only)`，切回适用的 GPT 模型后继续生效。
+- 切换到其他模型不改请求；开启状态显示为 `fast:on(GPT-only)`，切回适用的 GPT 模型后继续生效。
 - 切换只影响下一次发出的请求，不改变已经发送的请求。
 
 插件使用本机 Pi 的模型费率和服务档位倍率修正费用估算，包括 Codex 默认档位回显、Chat Completions 的 chunk 档位，以及 Responses 缺失档位时的请求值回退。普通流式请求和后台缓存预热都适用，不会把已有 Priority 费用重复翻倍，也不覆盖上游实报的费用。该估算不等同于上游实际账单。

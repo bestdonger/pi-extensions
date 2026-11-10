@@ -1,9 +1,9 @@
 {
   "name": "@bestdonger/pi-token-speed",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Live token throughput in Pi's status line, with final provider usage",
+  "description": "Cumulative session decode throughput in Pi's status line, using settled provider usage",
   "keywords": ["pi-package", "pi-extension"],
   "repository": {
     "type": "git",

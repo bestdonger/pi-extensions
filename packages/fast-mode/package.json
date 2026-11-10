@@ -1,6 +1,6 @@
 {
   "name": "@bestdonger/pi-fast-mode",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Toggle GPT priority service tier from Pi with /fast without changing reasoning",

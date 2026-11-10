@@ -37,7 +37,7 @@ export default function (pi: ExtensionAPI) {
 	function updateStatus(ctx: ExtensionContext) {
 		if (!ctx.hasUI) return;
 		const active = enabled && supportsFast(ctx.model);
-		const label = `fast: ${enabled ? "on" : "off"}${enabled && !active ? " (GPT only)" : ""}`;
+		const label = `fast:${enabled ? "on" : "off"}${enabled && !active ? "(GPT-only)" : ""}`;
 		ctx.ui.setStatus(STATE_TYPE, ctx.ui.theme.fg(active ? "accent" : "dim", label));
 	}
 

@@ -76,7 +76,7 @@ test("refreshed provider instances are wrapped before the next turn and restored
 
 test("new sessions start off and explicitly use the standard tier", () => {
 	const h = harness();
-	assert.equal(h.statuses.get(STATE_TYPE), "fast: off");
+	assert.equal(h.statuses.get(STATE_TYPE), "fast:off");
 	assert.equal(h.request().service_tier, "default");
 	assert.equal(h.entries.length, 0);
 });
@@ -85,7 +85,7 @@ test("/fast toggles on and off and persists both transitions", async () => {
 	const h = harness();
 	await h.run();
 	assert.equal(h.request().service_tier, "priority");
-	assert.equal(h.statuses.get(STATE_TYPE), "fast: on");
+	assert.equal(h.statuses.get(STATE_TYPE), "fast:on");
 	await h.run();
 	assert.equal(h.request().service_tier, "default");
 	assert.deepEqual(h.entries, [state(true), state(false)]);
@@ -154,12 +154,12 @@ test("non-GPT models are not modified and saved mode resumes after switching bac
 		h.ctx.model = model;
 		h.emit("model_select");
 		assert.equal(h.request(), undefined);
-		assert.equal(h.statuses.get(STATE_TYPE), "fast: on (GPT only)");
+		assert.equal(h.statuses.get(STATE_TYPE), "fast:on(GPT-only)");
 	}
 	h.ctx.model = { ...gpt };
 	h.emit("model_select");
 	assert.equal(h.request().service_tier, "priority");
-	assert.equal(h.statuses.get(STATE_TYPE), "fast: on");
+	assert.equal(h.statuses.get(STATE_TYPE), "fast:on");
 });
 
 test("namespaced GPT model IDs work on compatible gateways", async () => {

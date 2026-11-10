@@ -1,301 +1,342 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { estimateTokens } from "@earendil-works/pi-coding-agent";
 import tokenSpeed, { formatSpeed } from "../src/index.ts";
 
-function assistant(overrides = {}) {
+const SAMPLE_TYPE = "token-speed-sample-v1";
+
+function assistant(output = 0, overrides = {}) {
 	return {
 		role: "assistant", content: [], api: "openai-responses", provider: "openai", model: "gpt-5.5",
 		timestamp: 10_000, stopReason: "stop",
 		usage: {
-			input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+			input: 1000, output, cacheRead: 0, cacheWrite: 0, totalTokens: 1000 + output,
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		},
 		...overrides,
 	};
 }
 
-function withOutput(tokens, overrides = {}) {
-	const message = assistant(overrides);
-	message.usage = { ...message.usage, input: 1000, output: tokens, totalTokens: 1000 + tokens };
-	return message;
+function sample(outputTokens, decodeMs) {
+	return { type: "custom", customType: SAMPLE_TYPE, data: { outputTokens, decodeMs } };
 }
 
 function harness(t, hasUI = true) {
 	let now = 0;
-	let unrefs = 0;
-	const timers = new Map();
+	let branch = [];
 	const handlers = new Map();
-	const statuses = new Map([["openai-fast-mode", "fast: on"]]);
+	const statuses = new Map([["openai-fast-mode", "fast:on"]]);
 	const writes = [];
+	const records = [];
 	t.mock.method(performance, "now", () => now);
-	t.mock.method(Date, "now", () => 10_000 + now);
-	t.mock.method(globalThis, "setInterval", (callback, delay) => {
-		assert.equal(delay, 250);
-		const handle = { unref() { unrefs++; } };
-		timers.set(handle, callback);
-		return handle;
-	});
-	t.mock.method(globalThis, "clearInterval", handle => timers.delete(handle));
+	t.mock.method(globalThis, "setInterval", () => assert.fail("token speed must not start a refresh timer"));
 	const ctx = {
 		hasUI,
+		sessionManager: { getBranch: () => branch },
 		ui: hasUI ? {
 			theme: { fg: (_color, text) => text },
 			setStatus: (key, value) => { statuses.set(key, value); writes.push([key, value]); },
 		} : undefined,
 	};
-	tokenSpeed({ on(name, callback) { handlers.set(name, callback); } });
-	return {
-		ctx, handlers, timers, writes, statuses,
-		get unrefs() { return unrefs; },
+	tokenSpeed({
+		on(name, callback) { handlers.set(name, callback); },
+		appendEntry(customType, data) {
+			const entry = { type: "custom", customType, data };
+			records.push(entry);
+			branch.push(entry);
+		},
+	});
+	const h = {
+		ctx, handlers, writes, records, statuses,
 		get status() { return statuses.get("token-speed"); },
-		emit(name, event = {}) { return handlers.get(name)(event, ctx); },
+		emit(name, event = {}) { return handlers.get(name)?.(event, ctx); },
 		advance(ms) { now += ms; },
-		tick(ms = 250) { now += ms; for (const callback of timers.values()) callback(); },
+		setBranch(entries) { branch = entries; },
+		start(message = assistant()) { h.emit("message_start", { message }); },
+		update(type = "text_delta", delta = "chunk", message = assistant()) {
+			h.emit("message_update", { message, assistantMessageEvent: { type, delta, contentIndex: 0, partial: message } });
+		},
+		finish(output, overrides = {}) { h.emit("message_end", { message: assistant(output, overrides) }); },
+		respond(output, duration = 1000, wait = 2000, overrides = {}) {
+			h.start();
+			h.advance(wait);
+			h.update();
+			h.advance(duration);
+			h.finish(output, overrides);
+		},
 	};
-}
-
-test("idle and empty responses show a placeholder", () => {
-	assert.equal(formatSpeed(undefined, 0), "↑ — tok/s");
-	assert.equal(formatSpeed(assistant(), 1000, true), "↑ — tok/s");
-});
-
-test("actual output tokens produce an exact rate and ignore input/cache usage", () => {
-	const message = withOutput(200);
-	message.usage.cacheRead = 20_000;
-	assert.equal(formatSpeed(message, 4000, true), "↑ 50.0 tok/s");
-});
-
-test("unreported output usage uses the host estimator with an estimate marker", () => {
-	const message = assistant({ content: [{ type: "text", text: "x".repeat(40) }] });
-	assert.equal(formatSpeed(message, 2000), "↑ ~5.0 tok/s");
-	assert.equal(formatSpeed(message, 2000, true), "↑ ~5.0 tok/s");
-});
-
-test("thinking, CJK text and tool arguments use the same estimator as Pi", () => {
-	const message = assistant({ content: [
-		{ type: "thinking", thinking: "比较两种方案" },
-		{ type: "text", text: "选择第二种方案。" },
-		{ type: "toolCall", id: "call-1", name: "bash", arguments: { command: "pwd" } },
-	] });
-	assert.equal(formatSpeed(message, 1000), `↑ ~${estimateTokens(message).toFixed(1)} tok/s`);
-});
-
-test("initial usage snapshots cannot freeze live speed at one token", () => {
-	const message = withOutput(1, { api: "anthropic-messages", content: [{ type: "text", text: "x".repeat(400) }] });
-	assert.equal(formatSpeed(message, 1000), "↑ ~100.0 tok/s");
-});
-
-test("successful final usage remains authoritative even below the content estimate", () => {
-	const message = withOutput(50, { content: [{ type: "text", text: "x".repeat(400) }] });
-	assert.equal(formatSpeed(message, 1000, true), "↑ 50.0 tok/s");
-});
-
-for (const [reason, suffix] of [["aborted", "stopped"], ["error", "error"]]) {
-	test(`${reason} keeps stale partial usage approximate`, () => {
-		const message = withOutput(1, { stopReason: reason, content: [{ type: "text", text: "x".repeat(400) }] });
-		assert.equal(formatSpeed(message, 1000, true), `↑ ~100.0 tok/s (${suffix})`);
-	});
-}
-
-test("hidden reasoning output usage is not double counted", () => {
-	const message = withOutput(180, { content: [{ type: "thinking", thinking: "brief summary" }] });
-	assert.equal(formatSpeed(message, 3000, true), "↑ 60.0 tok/s");
-});
-
-test("zero duration does not display Infinity or NaN", () => {
-	assert.equal(formatSpeed(withOutput(20), 0, true), "↑ — tok/s");
-});
-
-for (const [reason, suffix] of [["aborted", "stopped"], ["error", "error"]]) {
-	test(`${reason} marks the final partial response`, () => {
-		const message = assistant({ stopReason: reason, content: [{ type: "text", text: "x".repeat(40) }] });
-		assert.equal(formatSpeed(message, 1000, true), `↑ ~10.0 tok/s (${suffix})`);
-		assert.equal(formatSpeed(message, 1000), "↑ ~10.0 tok/s");
-	});
-}
-
-test("session startup shows the status without starting a timer", t => {
-	const h = harness(t);
 	h.emit("session_start");
-	assert.equal(h.status, "↑ — tok/s");
-	assert.equal(h.timers.size, 0);
+	return h;
+}
+
+test("format is compact, with a new speed icon and no spaces", () => {
+	assert.equal(formatSpeed(0, 0), "⚡—tok/s");
+	assert.equal(formatSpeed(200, 4000), "⚡50tok/s");
+	assert.equal(formatSpeed(165, 2000), "⚡83tok/s");
+	assert.equal(formatSpeed(17, 2000), "⚡8.5tok/s");
+	assert.equal(formatSpeed(1, 3000), "⚡0.3tok/s");
+	assert.equal(formatSpeed(20, 1000).includes(" "), false);
 });
 
-test("live updates include time before the first byte and refresh without new chunks", t => {
+test("startup shows a placeholder without creating a timer", t => {
 	const h = harness(t);
-	h.emit("message_start", { message: assistant({ timestamp: 8000 }) });
-	h.emit("message_update", { message: assistant({ content: [{ type: "text", text: "x".repeat(160) }] }) });
-	h.tick(1000);
-	assert.equal(h.status, "↑ ~13.3 tok/s"); // 40 estimated tokens / 3s, including the 2s wait.
-	h.tick(1000);
-	assert.equal(h.status, "↑ ~10.0 tok/s");
-	assert.equal(h.unrefs, 1);
+	assert.equal(h.status, "⚡—tok/s");
+	assert.equal(h.records.length, 0);
 });
 
-test("future message timestamps do not create negative elapsed time", t => {
+test("request wait and native whole-response duration are not decode time", t => {
 	const h = harness(t);
-	h.emit("message_start", { message: withOutput(20, { timestamp: 10_001 }) });
-	h.tick(1000);
-	assert.equal(h.status, "↑ ~20.0 tok/s");
+	h.respond(100, 1000, 20_000, { durationMs: 21_000 });
+	assert.equal(h.status, "⚡100tok/s");
+	assert.deepEqual(h.records, [sample(100, 1000)]);
 });
 
-test("native duration and actual output replace the live estimate at completion", t => {
+test("cumulative speed is total tokens / total decode time, not average rates or latest response", t => {
 	const h = harness(t);
-	h.emit("message_start", { message: assistant() });
-	h.emit("message_update", { message: assistant({ content: [{ type: "text", text: "x".repeat(40) }] }) });
-	h.tick(1000);
-	assert.equal(h.status, "↑ ~10.0 tok/s");
-	h.advance(4000); // Includes a delayed extension callback; native timing wins.
-	h.emit("message_end", { message: withOutput(120, { durationMs: 2000 }) });
-	assert.equal(h.status, "↑ 60.0 tok/s");
-	assert.equal(h.timers.size, 0);
-	h.tick(30_000);
-	assert.equal(h.status, "↑ 60.0 tok/s");
+	h.respond(100, 1000);
+	h.respond(100, 9000);
+	assert.equal(h.status, "⚡20tok/s"); // Not (100 + 11.1) / 2, and not 11.1.
+	assert.deepEqual(h.records, [sample(100, 1000), sample(100, 9000)]);
 });
 
-test("live provider output usage is a lower bound, not a current exact count", t => {
+test("streaming never publishes estimates or initial usage snapshots", t => {
 	const h = harness(t);
-	h.emit("message_start", { message: assistant() });
-	h.emit("message_update", { message: withOutput(60) });
-	h.tick(2000);
-	assert.equal(h.status, "↑ ~30.0 tok/s");
-});
-
-test("legacy responses fall back to monotonic elapsed time", t => {
-	const h = harness(t);
-	h.emit("message_start", { message: assistant() });
-	h.advance(2000);
-	h.emit("message_end", { message: withOutput(100) });
-	assert.equal(h.status, "↑ 50.0 tok/s");
-});
-
-test("missing final usage keeps the estimate marker", t => {
-	const h = harness(t);
-	h.emit("message_start", { message: assistant() });
+	const writes = h.writes.length;
+	h.start();
 	h.advance(1000);
-	h.emit("message_end", { message: assistant({ durationMs: 2000, content: [{ type: "text", text: "x".repeat(80) }] }) });
-	assert.equal(h.status, "↑ ~10.0 tok/s");
+	h.update("text_delta", "x".repeat(400), assistant(1));
+	for (let n = 0; n < 1000; n++) h.update("text_delta", "more", assistant(1));
+	h.advance(2000);
+	assert.equal(h.status, "⚡—tok/s");
+	assert.equal(h.writes.length, writes);
+	assert.equal(h.records.length, 0);
+	h.finish(100);
+	assert.equal(h.status, "⚡50tok/s");
+	assert.deepEqual(h.records, [sample(100, 2000)]);
 });
 
-test("user and tool messages do not affect speed or add tool execution time", t => {
+for (const type of ["text_delta", "thinking_delta", "toolcall_delta"]) {
+	test(`${type} starts timing at its first nonempty delta`, t => {
+		const h = harness(t);
+		h.start();
+		h.advance(3000);
+		h.update(type, "");
+		h.advance(2000);
+		h.update(type, " ");
+		h.advance(1000);
+		h.update(type, "later");
+		h.advance(1000);
+		h.finish(80);
+		assert.deepEqual(h.records, [sample(80, 2000)]);
+		assert.equal(h.status, "⚡40tok/s");
+	});
+}
+
+test("a name-bearing tool call counts as the first token before argument deltas", t => {
 	const h = harness(t);
-	h.emit("message_start", { message: assistant() });
-	h.emit("message_end", { message: withOutput(40, { durationMs: 1000, stopReason: "toolUse" }) });
+	h.start();
+	h.advance(2000);
+	h.update("toolcall_start", "", assistant(0, { content: [{ type: "toolCall", id: "call-1", name: "bash", arguments: {} }] }));
+	h.advance(1000);
+	h.update("toolcall_delta", '{"command":"pwd"}');
+	h.advance(1000);
+	h.finish(60, { stopReason: "toolUse" });
+	assert.deepEqual(h.records, [sample(60, 2000)]);
+});
+
+test("block starts, ends and unnamed empty tool calls do not invent a first token", t => {
+	const h = harness(t);
+	h.start();
+	for (const type of ["text_start", "thinking_start", "text_end", "thinking_end", "toolcall_end"]) {
+		h.update(type, "", assistant(0, { content: [{ type: "text", text: "shared partial already mutated" }] }));
+	}
+	h.update("toolcall_start", "", assistant(0, { content: [{ type: "toolCall", id: "", name: "", arguments: {} }] }));
+	h.advance(1000);
+	h.finish(100);
+	assert.equal(h.status, "⚡—tok/s");
+	assert.equal(h.records.length, 0);
+});
+
+test("reasoning output is taken from final usage without double counting content", t => {
+	const h = harness(t);
+	h.respond(180, 3000, 1000, { content: [{ type: "thinking", thinking: "brief visible summary" }] });
+	assert.equal(h.status, "⚡60tok/s");
+});
+
+test("input, cache and cost fields are not included", t => {
+	const h = harness(t);
+	const message = assistant(100);
+	message.usage.cacheRead = 20_000;
+	message.usage.cost.total = 9;
+	h.start();
+	h.update();
+	h.advance(2000);
+	h.emit("message_end", { message });
+	assert.equal(h.status, "⚡50tok/s");
+});
+
+for (const stopReason of ["aborted", "error"]) {
+	test(`${stopReason} does not count stale partial usage or erase completed statistics`, t => {
+		const h = harness(t);
+		h.respond(80, 2000);
+		h.respond(1, 10000, 1000, { stopReason });
+		assert.equal(h.status, "⚡40tok/s");
+		assert.equal(h.records.length, 1);
+	});
+}
+
+test("length-limited successful responses contribute their final usage", t => {
+	const h = harness(t);
+	h.respond(80, 2000, 1000, { stopReason: "length" });
+	assert.equal(h.status, "⚡40tok/s");
+});
+
+test("missing/zero output usage, absent first tokens and zero decode time do not enter totals", t => {
+	const h = harness(t);
+	h.respond(80, 2000);
+	h.respond(0);
+	h.respond(100, 0);
+	h.start();
+	h.advance(1000);
+	h.finish(500);
+	h.finish(999, { durationMs: 1000 });
+	assert.equal(h.status, "⚡40tok/s");
+	assert.equal(h.records.length, 1);
+});
+
+test("tool execution, waiting and empty responses keep the same value without redraws", t => {
+	const h = harness(t);
+	h.respond(80, 2000, 1000, { stopReason: "toolUse" });
+	const writes = h.writes.length;
 	for (const role of ["user", "toolResult", "custom"]) {
 		h.emit("message_start", { message: { role } });
+		h.advance(60_000);
 		h.emit("message_end", { message: { role } });
 	}
-	h.tick(60_000);
-	assert.equal(h.status, "↑ 40.0 tok/s");
-	assert.equal(h.timers.size, 0);
+	h.emit("agent_end");
+	h.emit("turn_start");
+	h.emit("model_select");
+	h.respond(0, 1000, 60_000);
+	h.advance(3600_000);
+	assert.equal(h.status, "⚡40tok/s");
+	assert.equal(h.writes.length, writes);
+	h.respond(120, 3000);
+	assert.equal(h.status, "⚡40tok/s");
+	assert.equal(h.writes.length, writes); // Even an unchanged rounded result is deduplicated.
 });
 
-test("each assistant response has independent timing and tokens", t => {
+test("changing models retains whole-session totals and does not interrupt current timing", t => {
 	const h = harness(t);
-	h.emit("message_start", { message: assistant() });
-	h.emit("message_end", { message: withOutput(100, { durationMs: 1000 }) });
-	h.advance(20_000);
-	h.emit("message_start", { message: assistant({ timestamp: 30_000 }) });
-	assert.equal(h.status, "↑ — tok/s");
-	h.emit("message_update", { message: withOutput(20) });
-	h.tick(2000);
-	assert.equal(h.status, "↑ ~10.0 tok/s");
-	assert.equal(h.timers.size, 1);
+	h.respond(100, 1000);
+	h.start();
+	h.update();
+	h.emit("model_select");
+	h.advance(4000);
+	h.finish(100, { provider: "anthropic", model: "claude-sonnet-4-5", api: "anthropic-messages" });
+	assert.equal(h.status, "⚡40tok/s");
 });
 
-for (const name of ["session_start", "session_tree", "model_select", "turn_start"]) {
-	test(`${name} clears active state and timers`, t => {
+for (const name of ["session_start", "session_tree"]) {
+	test(`${name} restores all current-branch samples, including those before compaction`, t => {
 		const h = harness(t);
-		h.emit("message_start", { message: withOutput(20) });
-		h.tick(1000);
+		h.setBranch([
+			sample(100, 1000),
+			{ type: "compaction", summary: "old context summarized" },
+			sample(100, 9000),
+			{ type: "custom", customType: "another-extension", data: {} },
+			{ type: "message", message: assistant(2000, { durationMs: 1000 }) },
+		]);
 		h.emit(name);
-		assert.equal(h.status, "↑ — tok/s");
-		assert.equal(h.timers.size, 0);
-		h.emit("message_update", { message: withOutput(100) });
-		h.tick(1000);
-		assert.equal(h.status, "↑ — tok/s");
+		assert.equal(h.status, "⚡20tok/s");
+		assert.equal(h.records.length, 0);
+		h.respond(100, 5000);
+		assert.equal(h.status, "⚡20tok/s");
 	});
 }
 
-test("agent_end stops unfinished streams and preserves a finalized status", t => {
+test("old history without first-token samples is not assigned invented decode timing", t => {
 	const h = harness(t);
-	h.emit("message_start", { message: withOutput(60) });
-	h.advance(3000);
+	h.setBranch([{ type: "message", message: assistant(2000, { durationMs: 1000 }) }]);
+	h.emit("session_start");
+	assert.equal(h.status, "⚡—tok/s");
+});
+
+test("reloads do not count samples twice and abandoned branches cannot leak statistics", t => {
+	const h = harness(t);
+	h.respond(100, 1000);
+	h.emit("session_start");
+	h.emit("session_start");
+	h.respond(100, 9000);
+	assert.equal(h.status, "⚡20tok/s");
+	h.setBranch([sample(30, 1000)]);
+	h.emit("session_tree");
+	assert.equal(h.status, "⚡30tok/s");
+	h.setBranch([]);
+	h.emit("session_start");
+	assert.equal(h.status, "⚡—tok/s");
+});
+
+test("branch navigation discards unfinished timing", t => {
+	const h = harness(t);
+	h.start();
+	h.update();
+	h.emit("session_tree");
+	h.advance(1000);
+	h.finish(100);
+	assert.equal(h.records.length, 0);
+});
+
+test("agent_end discards an unfinished stream without counting it on the next response", t => {
+	const h = harness(t);
+	h.start();
+	h.update();
+	h.advance(1000);
 	h.emit("agent_end");
-	assert.equal(h.status, "↑ ~20.0 tok/s");
-	assert.equal(h.timers.size, 0);
-	h.emit("agent_end");
-	assert.equal(h.status, "↑ ~20.0 tok/s");
+	h.finish(100);
+	assert.equal(h.records.length, 0);
+	h.respond(20, 1000);
+	assert.equal(h.status, "⚡20tok/s");
 });
 
-test("session shutdown removes the status and cannot leave a timer behind", t => {
-	const h = harness(t);
-	h.emit("message_start", { message: withOutput(20) });
-	h.emit("session_shutdown");
-	assert.equal(h.status, undefined);
-	assert.equal(h.timers.size, 0);
-	h.tick(1000);
-	assert.equal(h.status, undefined);
-});
-
-test("an error before streaming can still show its native timing", t => {
-	const h = harness(t);
-	h.emit("message_end", { message: withOutput(20, { stopReason: "error", durationMs: 1000 }) });
-	assert.equal(h.status, "↑ ~20.0 tok/s (error)");
-	assert.equal(h.timers.size, 0);
-});
-
-test("stream chunks do not cause a status redraw on every delta", t => {
-	const h = harness(t);
-	h.emit("message_start", { message: assistant() });
-	const initialWrites = h.writes.length;
-	for (let n = 1; n <= 1000; n++) {
-		h.emit("message_update", { message: assistant({ content: [{ type: "text", text: "x".repeat(n) }] }) });
-	}
-	assert.equal(h.writes.length, initialWrites);
-	h.tick();
-	assert.equal(h.writes.length, initialWrites + 1);
-});
-
-test("headless operation never touches UI or starts timers", t => {
+test("headless execution records samples but never calls UI or starts a timer", t => {
 	const h = harness(t, false);
-	for (const name of ["session_start", "session_tree", "model_select", "turn_start"]) h.emit(name);
-	h.emit("message_start", { message: assistant() });
-	h.emit("message_update", { message: withOutput(20) });
-	h.emit("message_end", { message: withOutput(20) });
-	h.emit("agent_end");
+	h.respond(80, 2000);
+	h.emit("session_start");
+	h.emit("model_select");
 	h.emit("session_shutdown");
-	assert.equal(h.timers.size, 0);
+	assert.deepEqual(h.records, [sample(80, 2000)]);
 	assert.equal(h.writes.length, 0);
 });
 
-test("all model APIs share the same status implementation", t => {
+test("finished statistics remain in the readable accent color", t => {
 	const h = harness(t);
-	for (const [provider, api] of [["anthropic", "anthropic-messages"], ["google", "google-generative-ai"], ["openai-codex", "openai-codex-responses"]]) {
-		h.emit("message_start", { message: assistant({ provider, api }) });
-		h.emit("message_end", { message: withOutput(80, { provider, api, durationMs: 2000 }) });
-		assert.equal(h.status, "↑ 40.0 tok/s");
-	}
+	const colors = [];
+	h.ctx.ui.theme.fg = (color, text) => { colors.push(color); return text; };
+	h.respond(80, 2000);
+	assert.equal(colors.at(-1), "accent");
 });
 
-test("Fast Mode status and provider requests are untouched", t => {
+test("session shutdown clears the status and all active timing", t => {
 	const h = harness(t);
-	h.emit("session_start");
-	h.emit("message_start", { message: assistant() });
-	h.emit("message_end", { message: withOutput(100, { durationMs: 1000 }) });
-	assert.equal(h.statuses.get("openai-fast-mode"), "fast: on");
+	h.respond(80, 2000);
+	h.start();
+	h.update();
+	h.emit("session_shutdown");
+	assert.equal(h.status, undefined);
+	h.advance(1000);
+	h.finish(100);
+	assert.equal(h.status, undefined);
+	assert.equal(h.records.length, 1);
+});
+
+test("Fast Mode, provider requests and assistant messages are not modified", t => {
+	const h = harness(t);
+	const message = assistant(80, { durationMs: 9999 });
+	const before = structuredClone(message);
+	h.start(message);
+	h.update("text_delta", "answer", message);
+	h.advance(2000);
+	h.emit("message_end", { message });
+	assert.deepEqual(message, before);
+	assert.equal(h.statuses.get("openai-fast-mode"), "fast:on");
 	assert.equal(h.handlers.has("before_provider_request"), false);
-	assert.equal(h.handlers.has("provider_stream_event"), false);
-});
-
-test("calculating speed never mutates the message", () => {
-	const message = assistant({ content: [{ type: "text", text: "immutable output" }] });
-	Object.freeze(message.content[0]);
-	Object.freeze(message.content);
-	Object.freeze(message.usage);
-	Object.freeze(message);
-	const before = JSON.stringify(message);
-	formatSpeed(message, 1000, true);
-	assert.equal(JSON.stringify(message), before);
 });

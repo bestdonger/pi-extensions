@@ -11,7 +11,7 @@ pi-extensions/
 │   ├── activity-summary/     # regular/fullscreen TUI 活动摘要
 │   ├── rex-prompt-navigation/ # Rex 用户消息导航
 │   ├── fast-mode/             # GPT Fast 优先处理开关
-│   └── token-speed/           # 状态栏实时 token 吞吐量
+│   └── token-speed/           # 状态栏会话累计 token 吞吐量
 ├── docs/
 │   └── assets/               # 真实组件渲染预览
 └── scripts/
@@ -69,7 +69,7 @@ Ask 集成测试读取 `PI_PACKAGE_ROOT`，默认是 Homebrew 的 Pi 路径。Ac
 
 Fast Mode 无额外运行依赖，单元测试直接使用 Node.js，不调用模型 API。已在 Pi 1.5.1 验证；支持 OpenAI Responses、Codex Responses 和 Chat Completions 的 GPT 请求。
 
-Token Speed 复用宿主的 token 估算函数，使用 `message_start/update/end` 观察主会话。每 250 ms 更新估算速度，正常结束后使用 `usage.output / durationMs`；计时包含请求等待和思考，不包含后续工具执行。测试覆盖时钟、估算/实际用量切换和 timer 清理，基线为 Pi 1.5.1。
+Token Speed 使用 `message_start/update/end` 观察主会话：以首个非空文本/思考/工具参数 delta 或带名字的工具调用为首 token，使用单调时钟计算到响应结束的耗时。正常结算且输出用量大于 0 的响应写入不参与模型上下文的 `token-speed-sample-v1` custom entry，显示 Σusage.output / ΣdecodeMs；没有刷新 timer，不做内容估算，不计首 token 等待和工具执行。重载或分支切换仅累加 `getBranch()` 中的样本，旧消息不补造首 token 时间；无 UI 也记录计时，不操作界面。测试覆盖累计加权口径、首 token 识别、结果常驻、分支/磁盘恢复、Anthropic 初始用量和原生 footer，基线为 Pi 1.5.1。
 
 ## 生成首页预览
 

@@ -13,35 +13,46 @@ const fromHost = path => import(pathToFileURL(join(host, path)).href);
 const { createAgentSession, DefaultResourceLoader, FooterComponent, initTheme, ModelRuntime, SessionManager, SettingsManager } = await fromHost("dist/index.js");
 const { createProvider } = await fromHost("node_modules/@earendil-works/pi-ai/dist/models.js");
 const { createAssistantMessageEventStream } = await fromHost("node_modules/@earendil-works/pi-ai/dist/utils/event-stream.js");
+const samples = manager => manager.getBranch().filter(entry => entry.type === "custom" && entry.customType === "token-speed-sample-v1").map(entry => entry.data);
 
-test("real Pi SDK streams live estimated speed, finalizes actual usage and stops redrawing", async () => {
+test("real SDK settles cumulative decode speed, persists it outside model context and restores on reload", async () => {
 	const dir = await mkdtemp(join(tmpdir(), "pi-speed-sdk-"));
+	const statuses = [];
+	const observations = [];
+	const contexts = [];
+	let responses = 0;
 	const model = {
 		id: "offline-speed", name: "Offline Speed", provider: "offline-speed", api: "openai-responses",
 		baseUrl: "https://offline.invalid", reasoning: false, input: ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 128000, maxTokens: 1000,
 	};
-	function stream() {
+	function stream(_model, context) {
+		contexts.push(context);
+		const turn = responses++;
 		const events = createAssistantMessageEventStream();
 		const message = {
 			role: "assistant", api: model.api, provider: model.provider, model: model.id,
 			timestamp: Date.now(), stopReason: "stop", content: [],
 			usage: {
-				input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+				input: 100, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 101,
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 			},
 		};
 		void (async () => {
+			const before = statuses.at(-1);
+			const writes = statuses.length;
 			events.push({ type: "start", partial: message });
+			await delay(80); // Request/prefill wait is excluded from decodeMs.
 			const text = { type: "text", text: "" };
 			message.content.push(text);
 			events.push({ type: "text_start", contentIndex: 0, partial: message });
 			text.text = "offline text ".repeat(20);
 			events.push({ type: "text_delta", contentIndex: 0, delta: text.text, partial: message });
-			await delay(650);
-			message.usage.input = 100;
-			message.usage.output = 80;
-			message.usage.totalTokens = 180;
+			await delay(60);
+			observations.push({ before, during: statuses.at(-1), writesBefore: writes, writesDuring: statuses.length });
+			await delay(turn === 0 ? 60 : 180);
+			message.usage.output = turn === 0 ? 80 : 20;
+			message.usage.totalTokens = 100 + message.usage.output;
 			events.push({ type: "text_end", contentIndex: 0, content: text.text, partial: message });
 			events.push({ type: "done", reason: "stop", message });
 			events.end();
@@ -69,11 +80,11 @@ test("real Pi SDK streams live estimated speed, finalizes actual usage and stops
 		});
 		await loader.reload();
 		assert.deepEqual(loader.getExtensions().errors, []);
+		const manager = SessionManager.create(dir, join(dir, "sessions"));
 		({ session } = await createAgentSession({
 			cwd: dir, agentDir: dir, modelRuntime: runtime, model, resourceLoader: loader,
-			settingsManager, sessionManager: SessionManager.inMemory(dir), tools: [],
+			settingsManager, sessionManager: manager, tools: [],
 		}));
-		const statuses = [];
 		const errors = [];
 		await session.bindExtensions({
 			mode: "interactive", onError: error => errors.push(error),
@@ -82,24 +93,55 @@ test("real Pi SDK streams live estimated speed, finalizes actual usage and stops
 				setStatus(key, text) { if (key === "token-speed") statuses.push(text); },
 			},
 		});
-		await session.prompt("offline fixture");
-		const message = session.messages.filter(message => message.role === "assistant").at(-1);
-		assert.equal(message.stopReason, "stop", message.errorMessage);
-		assert.equal(message.usage.output, 80);
-		assert.ok(message.durationMs > 0);
-		assert.ok(statuses.some(text => /↑ ~\d+\.\d tok\/s/.test(text)), JSON.stringify(statuses));
-		assert.equal(statuses.at(-1), formatSpeed(message, message.durationMs, true));
+		assert.equal(statuses.at(-1), "⚡—tok/s");
+		await session.prompt("first offline fixture");
+		const first = samples(manager)[0];
+		const firstMessage = manager.getBranch().find(entry => entry.type === "message" && entry.message.role === "assistant");
+		assert.equal(first.outputTokens, 80);
+		assert.ok(first.decodeMs > 0);
+		assert.ok(first.decodeMs + 40 < firstMessage.message.durationMs, JSON.stringify({ first, durationMs: firstMessage.message.durationMs }));
+		assert.equal(statuses.at(-1), formatSpeed(first.outputTokens, first.decodeMs));
+		const firstSpeed = statuses.at(-1);
+
+		await session.prompt("second offline fixture");
+		const readings = samples(manager);
+		assert.equal(readings.length, 2);
+		assert.equal(readings[1].outputTokens, 20);
+		const totalMs = readings.reduce((sum, reading) => sum + reading.decodeMs, 0);
+		assert.equal(statuses.at(-1), formatSpeed(100, totalMs));
+		assert.notEqual(statuses.at(-1), formatSpeed(20, readings[1].decodeMs));
+		assert.equal(observations[0].during, "⚡—tok/s");
+		assert.equal(observations[1].during, firstSpeed);
+		for (const reading of observations) assert.equal(reading.writesDuring, reading.writesBefore);
+		for (const context of contexts) {
+			assert.equal(context.messages.some(message => message.role === "custom" || message.customType === "token-speed-sample-v1"), false);
+		}
 		assert.deepEqual(errors, []);
+
+		const finalSpeed = statuses.at(-1);
+		manager.appendCompaction("offline compaction", firstMessage.id, 1000);
+		assert.deepEqual(samples(manager), readings);
+		await session.reload();
+		assert.equal(statuses.at(-1), finalSpeed);
+		assert.deepEqual(samples(manager), readings);
+		assert.deepEqual(errors, []);
+		const reopened = SessionManager.open(manager.getSessionFile());
+		assert.deepEqual(samples(reopened), readings);
+		reopened.branch(firstMessage.id);
+		assert.deepEqual(samples(reopened), [first]);
+
 		initTheme("dark", false);
 		const footer = new FooterComponent(session, {
 			getGitBranch: () => null,
 			getAvailableProviderCount: () => 1,
-			getExtensionStatuses: () => new Map([["openai-fast-mode", "fast: on"], ["token-speed", statuses.at(-1)]]),
+			getExtensionStatuses: () => new Map([["openai-fast-mode", "fast:on"], ["token-speed", statuses.at(-1)]]),
 			onBranchChange: () => () => {},
 		});
-		const rendered = footer.render(120).map(stripVTControlCharacters).join("\n");
-		assert.ok(rendered.includes(statuses.at(-1)), rendered);
-		assert.ok(rendered.includes("fast: on"), rendered);
+		for (const width of [40, 120]) {
+			const rendered = footer.render(width).map(stripVTControlCharacters).join("\n");
+			assert.ok(rendered.includes(finalSpeed), rendered);
+			assert.ok(rendered.includes("fast:on"), rendered);
+		}
 		footer.dispose();
 		const finishedWrites = statuses.length;
 		await delay(300);

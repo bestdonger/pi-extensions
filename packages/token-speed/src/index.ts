@@ -1,87 +1,98 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { estimateTokens, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AssistantMessageEvent } from "@earendil-works/pi-ai";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const STATUS_KEY = "token-speed";
-const REFRESH_MS = 250;
+const SAMPLE_TYPE = "token-speed-sample-v1";
 
-export function formatSpeed(message: AssistantMessage | undefined, elapsedMs: number, final = false): string {
-	const output = message?.usage.output ?? 0;
-	// Mid-stream usage can be an initial snapshot (Anthropic often reports 1).
-	// Only a successful terminal message makes the reported output authoritative.
-	const measured = final && message?.stopReason !== "aborted" && message?.stopReason !== "error" && output > 0;
-	const tokens = measured ? output : Math.max(output, message ? estimateTokens(message) : 0);
-	const rate = tokens > 0 && elapsedMs > 0
-		? `${measured ? "" : "~"}${(tokens * 1000 / elapsedMs).toFixed(1)}`
-		: "—";
-	const stopped = final && (message?.stopReason === "aborted" || message?.stopReason === "error")
-		? ` (${message.stopReason === "aborted" ? "stopped" : "error"})`
-		: "";
-	return `↑ ${rate} tok/s${stopped}`;
+interface SpeedSample {
+	outputTokens: number;
+	decodeMs: number;
+}
+
+export function formatSpeed(outputTokens: number, decodeMs: number): string {
+	if (decodeMs <= 0) return "⚡—tok/s";
+	const rate = outputTokens * 1000 / decodeMs;
+	return `⚡${rate >= 10 ? Math.round(rate) : Math.round(rate * 10) / 10}tok/s`;
+}
+
+function isToken(event: AssistantMessageEvent): boolean {
+	switch (event.type) {
+		case "text_delta":
+		case "thinking_delta":
+		case "toolcall_delta":
+			return event.delta !== "";
+		case "toolcall_start": {
+			const block = event.partial.content[event.contentIndex];
+			return block?.type === "toolCall" && block.name !== "";
+		}
+		default:
+			return false;
+	}
 }
 
 export default function tokenSpeed(pi: ExtensionAPI) {
-	let timer: ReturnType<typeof setInterval> | undefined;
-	let response: { message: AssistantMessage; startedAt: number; elapsedBeforeStart: number } | undefined;
+	let outputTokens = 0;
+	let decodeMs = 0;
+	let displayed: string | undefined;
+	let response: { firstTokenAt?: number } | undefined;
 
-	function stopTimer() {
-		if (timer !== undefined) clearInterval(timer);
-		timer = undefined;
+	function show(ctx: ExtensionContext) {
+		if (!ctx.hasUI) return;
+		const label = formatSpeed(outputTokens, decodeMs);
+		const styled = ctx.ui.theme.fg(decodeMs > 0 ? "accent" : "dim", label);
+		if (styled === displayed) return;
+		ctx.ui.setStatus(STATUS_KEY, styled);
+		displayed = styled;
 	}
 
-	function elapsed() {
-		return response ? response.elapsedBeforeStart + performance.now() - response.startedAt : 0;
-	}
-
-	function reset(ctx: ExtensionContext, hide = false) {
-		stopTimer();
+	function restore(ctx: ExtensionContext) {
+		outputTokens = 0;
+		decodeMs = 0;
 		response = undefined;
-		if (ctx.hasUI) {
-			ctx.ui.setStatus(STATUS_KEY, hide ? undefined : ctx.ui.theme.fg("dim", "↑ — tok/s"));
+		displayed = undefined;
+		for (const entry of ctx.sessionManager.getBranch()) {
+			if (entry.type !== "custom" || entry.customType !== SAMPLE_TYPE) continue;
+			const sample = entry.data as SpeedSample;
+			outputTokens += sample.outputTokens;
+			decodeMs += sample.decodeMs;
 		}
+		show(ctx);
 	}
 
-	pi.on("session_start", (_event, ctx) => reset(ctx));
-	pi.on("session_tree", (_event, ctx) => reset(ctx));
-	pi.on("model_select", (_event, ctx) => reset(ctx));
-	pi.on("turn_start", (_event, ctx) => reset(ctx));
+	pi.on("session_start", (_event, ctx) => restore(ctx));
+	pi.on("session_tree", (_event, ctx) => restore(ctx));
+	pi.on("model_select", (_event, ctx) => show(ctx));
 
-	pi.on("message_start", (event, ctx) => {
-		if (!ctx.hasUI || event.message.role !== "assistant") return;
-		stopTimer();
-		response = {
-			message: event.message,
-			startedAt: performance.now(),
-			// message_start can arrive after headers or the first byte. Include that wait.
-			elapsedBeforeStart: Math.max(0, Date.now() - event.message.timestamp),
-		};
-		const render = () => {
-			if (!response) return;
-			ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("accent", formatSpeed(response.message, elapsed())));
-		};
-		render();
-		timer = setInterval(render, REFRESH_MS);
-		timer.unref();
+	pi.on("message_start", (event) => {
+		if (event.message.role === "assistant") response = {};
 	});
 
 	pi.on("message_update", (event) => {
-		if (response && event.message.role === "assistant") response.message = event.message;
+		if (!response || response.firstTokenAt !== undefined || !isToken(event.assistantMessageEvent)) return;
+		response.firstTokenAt = performance.now();
 	});
 
 	pi.on("message_end", (event, ctx) => {
-		if (!ctx.hasUI || event.message.role !== "assistant") return;
-		stopTimer();
-		const duration = event.message.durationMs ?? elapsed();
-		ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("dim", formatSpeed(event.message, duration, true)));
+		if (event.message.role !== "assistant") return;
+		const firstTokenAt = response?.firstTokenAt;
 		response = undefined;
+		const message = event.message;
+		if (firstTokenAt === undefined || message.stopReason === "aborted" || message.stopReason === "error") return;
+		const sample = { outputTokens: message.usage.output, decodeMs: performance.now() - firstTokenAt };
+		// Pi uses zero both for unreported output usage and for genuinely empty responses.
+		if (sample.outputTokens <= 0 || sample.decodeMs <= 0) return;
+		pi.appendEntry<SpeedSample>(SAMPLE_TYPE, sample);
+		outputTokens += sample.outputTokens;
+		decodeMs += sample.decodeMs;
+		show(ctx);
 	});
 
-	pi.on("agent_end", (_event, ctx) => {
-		stopTimer();
-		if (response && ctx.hasUI) {
-			ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("dim", formatSpeed(response.message, elapsed())));
-		}
+	pi.on("agent_end", () => { response = undefined; });
+	pi.on("session_shutdown", (_event, ctx) => {
 		response = undefined;
+		outputTokens = 0;
+		decodeMs = 0;
+		displayed = undefined;
+		if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, undefined);
 	});
-
-	pi.on("session_shutdown", (_event, ctx) => reset(ctx, true));
 }

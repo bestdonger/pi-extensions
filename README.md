@@ -57,7 +57,7 @@
 
 ### GPT Fast Mode
 
-用 `/fast` 快速切换 GPT 的优先处理档位，状态栏显示开关；不改变思考等级。支持 OpenAI API、Codex 协议和兼容网关，按会话分支保存状态，新会话默认关闭。已验证 **Pi 1.5.1**。
+用 `/fast` 快速切换 GPT 的优先处理档位，状态栏显示 `fast:on` / `fast:off`；不改变思考等级。支持 OpenAI API、Codex 协议和兼容网关，按会话分支保存状态，新会话默认关闭。已验证 **Pi 1.5.1**。
 
 Priority 可能消耗更多费用或额度，是否生效由上游决定。
 
@@ -65,7 +65,7 @@ Priority 可能消耗更多费用或额度，是否生效由上游决定。
 
 ### Token Speed
 
-状态栏每 250 ms 更新当前响应的平均输出速度，例如 `↑ ~42.6 tok/s`。生成中标注估算，正常结束后用 provider token 用量和宿主耗时校准；不替换原生 footer，可与 Fast Mode 同时显示。速度包含首 token、思考和网络等待。
+按 DSH 口径在状态栏显示会话累计输出速度，例如 `⚡82tok/s`：累计实际输出 tokens ÷ 累计首 token 到响应结束的耗时，排除首 token 等待与工具执行。只在响应结束后更新，生成和空闲期间常驻、不实时估算；重载或分支切换从当前分支保存的计时恢复，不替换原生 footer，可与 Fast Mode 同时显示。旧消息缺少首 token 时间，不按新口径回算。
 
 [统计口径、安装与测试 →](packages/token-speed/README.md)
 
@@ -109,7 +109,7 @@ pi update git:github.com/bestdonger/pi-extensions
 | 了解活动统计、展开和会话恢复 | [Activity Summary](packages/activity-summary/README.md) |
 | 使用 Rex 用户消息导航 | [Rex Prompt Navigation](packages/rex-prompt-navigation/README.md) |
 | 开关 GPT Fast 优先处理模式 | [GPT Fast Mode](packages/fast-mode/README.md) |
-| 实时查看 token 生成速度 | [Token Speed](packages/token-speed/README.md) |
+| 查看会话累计 token 生成速度 | [Token Speed](packages/token-speed/README.md) |
 | 修改代码、运行测试、更新预览 | [开发指南](docs/development.md) |
 | 报告问题或提出建议 | [GitHub Issues](https://github.com/bestdonger/pi-extensions/issues) |
 
