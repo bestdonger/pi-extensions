@@ -1,11 +1,36 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, test } from "node:test";
 import fastMode from "../src/index.ts";
 
 const STATE_TYPE = "openai-fast-mode";
 const gpt = { id: "gpt-6.1-sol", api: "openai-responses", provider: "openai" };
+const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+let testDir;
 
-function harness(branch = [], provider) {
+beforeEach(() => {
+	testDir = mkdtempSync(join(tmpdir(), "pi-fast-mode-"));
+	process.env.PI_CODING_AGENT_DIR = join(testDir, "agent");
+});
+
+afterEach(() => {
+	if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+	else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+	rmSync(testDir, { recursive: true, force: true });
+});
+
+const configPath = () => join(process.env.PI_CODING_AGENT_DIR, "fast-mode.json");
+const readConfig = () => JSON.parse(readFileSync(configPath(), "utf8"));
+
+function writeConfig(enabled) {
+	mkdirSync(process.env.PI_CODING_AGENT_DIR, { recursive: true });
+	writeFileSync(configPath(), JSON.stringify({ enabled }));
+}
+
+function harness(initial, provider, branch = []) {
+	if (initial !== undefined) writeConfig(initial);
 	const handlers = new Map();
 	const commands = new Map();
 	const statuses = new Map();
@@ -45,7 +70,7 @@ test("provider pricing wraps once and restores methods on shutdown without re-re
 	const stream = () => {}, streamSimple = () => {};
 	const provider = { id: "openai", auth: { apiKey: {} }, getModels: () => [gpt], stream, streamSimple };
 	const auth = provider.auth, getModels = provider.getModels;
-	const h = harness([], provider);
+	const h = harness(undefined, provider);
 	const wrapped = provider.streamSimple;
 	assert.notEqual(wrapped, streamSimple);
 	assert.equal(provider.auth, auth);
@@ -64,7 +89,7 @@ test("refreshed provider instances are wrapped before the next turn and restored
 	const first = { stream() {}, streamSimple() {} };
 	const second = { stream() {}, streamSimple() {} };
 	const originals = [first.streamSimple, second.streamSimple];
-	const h = harness([], first);
+	const h = harness(undefined, first);
 	h.ctx.modelRegistry.getProvider = () => second;
 	h.emit("turn_start");
 	assert.notEqual(first.streamSimple, originals[0]);
@@ -74,31 +99,36 @@ test("refreshed provider instances are wrapped before the next turn and restored
 	assert.equal(second.streamSimple, originals[1]);
 });
 
-test("new sessions start off and explicitly use the standard tier", () => {
+test("missing global config defaults off without creating a file", () => {
 	const h = harness();
 	assert.equal(h.statuses.get(STATE_TYPE), "fast:off");
 	assert.equal(h.request().service_tier, "default");
 	assert.equal(h.entries.length, 0);
+	assert.equal(existsSync(configPath()), false);
 });
 
-test("/fast toggles on and off and persists both transitions", async () => {
+test("/fast toggles globally and does not append session entries", async () => {
 	const h = harness();
 	await h.run();
 	assert.equal(h.request().service_tier, "priority");
 	assert.equal(h.statuses.get(STATE_TYPE), "fast:on");
+	assert.deepEqual(readConfig(), { enabled: true });
+	assert.match(h.notices.at(-1).message, /全局/);
 	await h.run();
 	assert.equal(h.request().service_tier, "default");
-	assert.deepEqual(h.entries, [state(true), state(false)]);
+	assert.deepEqual(readConfig(), { enabled: false });
+	assert.deepEqual(h.entries, []);
 });
 
 test("explicit on/off commands are idempotent and normalize whitespace/case", async () => {
 	const h = harness();
 	await h.run(" ON ");
 	await h.run("on");
-	assert.equal(h.entries.length, 1);
+	assert.deepEqual(readConfig(), { enabled: true });
 	await h.run("off");
 	await h.run("off");
-	assert.deepEqual(h.entries, [state(true), state(false)]);
+	assert.deepEqual(readConfig(), { enabled: false });
+	assert.deepEqual(h.entries, []);
 });
 
 function diagnosticProvider(reported = "default") {
@@ -127,7 +157,7 @@ async function observeRequest(h, provider, apiKey = "offline-oauth-token") {
 
 test("status separates subscription request tier from its non-authoritative default echo", async () => {
 	const provider = diagnosticProvider();
-	const h = harness([state(true)], provider);
+	const h = harness(true, provider);
 	h.ctx.model.baseUrl = "https://api.openai.com/v1";
 	await observeRequest(h, provider);
 	await h.run("status");
@@ -140,7 +170,7 @@ test("status separates subscription request tier from its non-authoritative defa
 
 test("status does not apply subscription echo semantics to API keys", async () => {
 	const provider = diagnosticProvider();
-	const h = harness([state(true)], provider);
+	const h = harness(true, provider);
 	h.ctx.model.baseUrl = "https://api.openai.com/v1";
 	await observeRequest(h, provider, "sk-offline-test");
 	await h.run("status");
@@ -150,7 +180,7 @@ test("status does not apply subscription echo semantics to API keys", async () =
 
 test("status has no observation before the first request or after branch navigation", async () => {
 	const provider = diagnosticProvider();
-	const h = harness([state(true)], provider);
+	const h = harness(true, provider);
 	await h.run("status");
 	assert.match(h.notices.at(-1).message, /尚无请求观测/);
 	await observeRequest(h, provider);
@@ -161,7 +191,7 @@ test("status has no observation before the first request or after branch navigat
 
 test("status does not reuse another model's response tier", async () => {
 	const provider = diagnosticProvider();
-	const h = harness([state(true)], provider);
+	const h = harness(true, provider);
 	await observeRequest(h, provider);
 	h.ctx.model = { ...gpt, id: "gpt-6-astra" };
 	h.emit("model_select");
@@ -174,18 +204,21 @@ test("status does not reuse another model's response tier", async () => {
 });
 
 test("status is read-only", async () => {
-	const h = harness([state(true)]);
+	const h = harness(true);
+	const original = readFileSync(configPath(), "utf8");
 	await h.run("status");
 	assert.equal(h.request().service_tier, "priority");
-	assert.deepEqual(h.entries, [state(true)]);
+	assert.equal(readFileSync(configPath(), "utf8"), original);
+	assert.deepEqual(h.entries, []);
 	assert.match(h.notices.at(-1).message, /已开启/);
 });
 
-test("invalid arguments do not change the mode", async () => {
+test("invalid arguments do not change the mode or create global config", async () => {
 	const h = harness();
 	await h.run("on off");
 	assert.equal(h.request().service_tier, "default");
 	assert.equal(h.entries.length, 0);
+	assert.equal(existsSync(configPath()), false);
 	assert.equal(h.notices.at(-1).level, "warning");
 });
 
@@ -242,40 +275,104 @@ test("namespaced GPT model IDs work on compatible gateways", async () => {
 });
 
 test("a non-GPT request payload is not changed even with a GPT session model", async () => {
-	const h = harness([state(true)]);
+	const h = harness(true);
 	assert.equal(h.request({ model: "claude-sonnet-4-5", input: [] }), undefined);
 });
 
 test("missing session model does not modify requests", () => {
-	const h = harness([state(true)]);
+	const h = harness(true);
 	h.ctx.model = undefined;
 	assert.equal(h.request({ model: gpt.id }), undefined);
 });
 
-test("reload/resume restores the last mode on the active branch", async () => {
+test("reload/resume restores global config instead of legacy branch entries", async () => {
 	const h = harness();
 	await h.run("on");
-	const reloaded = harness(h.entries);
+	h.emit("session_shutdown");
+	const reloaded = harness(undefined, undefined, [state(false)]);
+	assert.equal(reloaded.statuses.get(STATE_TYPE), "fast:on");
 	assert.equal(reloaded.request().service_tier, "priority");
 	await reloaded.run("off");
-	assert.equal(harness(reloaded.entries).request().service_tier, "default");
+	assert.equal(harness(undefined, undefined, [state(true)]).request().service_tier, "default");
 });
 
-test("tree navigation reconstructs only the active branch", () => {
-	const h = harness([state(true), state(false)]);
+test("tree navigation never restores legacy branch state or resets the global mode", async () => {
+	const h = harness(undefined, undefined, [state(true)]);
 	assert.equal(h.request().service_tier, "default");
-	h.entries.splice(0, h.entries.length, state(true));
+	assert.equal(existsSync(configPath()), false);
+	await h.run("on");
+	h.entries.splice(0, h.entries.length, state(false));
 	h.emit("session_tree");
+	assert.equal(h.statuses.get(STATE_TYPE), "fast:on");
 	assert.equal(h.request().service_tier, "priority");
 	h.entries.splice(0);
 	h.emit("session_tree");
+	assert.equal(h.request().service_tier, "priority");
+	assert.deepEqual(readConfig(), { enabled: true });
+});
+
+test("new sessions in other projects inherit the global mode", async () => {
+	const h = harness();
+	h.ctx.cwd = join(testDir, "project-a");
+	await h.run("on");
+	const other = harness();
+	other.ctx.cwd = join(testDir, "project-b");
+	assert.equal(other.statuses.get(STATE_TYPE), "fast:on");
+	assert.equal(other.request().service_tier, "priority");
+	await other.run("off");
+	assert.equal(harness().request().service_tier, "default");
+});
+
+test("already-open sessions refresh the global setting before requests and commands", async () => {
+	const first = harness();
+	const second = harness();
+	await first.run("on");
+	assert.equal(second.request().service_tier, "priority");
+	assert.equal(second.statuses.get(STATE_TYPE), "fast:on");
+	await first.run("off");
+	await second.run("status");
+	assert.equal(second.statuses.get(STATE_TYPE), "fast:off");
+	assert.match(second.notices.at(-1).message, /已关闭/);
+	await first.run("on");
+	await second.run();
+	assert.deepEqual(readConfig(), { enabled: false });
+	assert.equal(first.request().service_tier, "default");
+});
+
+test("external global config edits apply to the next request, including cache warming", async () => {
+	const provider = diagnosticProvider();
+	const h = harness(undefined, provider);
+	writeConfig(true);
+	h.emit("cache_warming_decision");
+	await observeRequest(h, provider);
+	await h.run("status");
+	assert.match(h.notices.at(-1).message, /priority → 上游回显 default/);
+	writeConfig(false);
 	assert.equal(h.request().service_tier, "default");
 });
 
-test("a new session does not inherit another session's mode", async () => {
+test("project-local configuration cannot override global Fast mode", () => {
+	const h = harness(true);
+	h.ctx.cwd = join(testDir, "project");
+	const projectConfigDir = join(h.ctx.cwd, ".pi");
+	mkdirSync(projectConfigDir, { recursive: true });
+	writeFileSync(join(projectConfigDir, "fast-mode.json"), '{"enabled":false}');
+	assert.equal(h.request().service_tier, "priority");
+});
+
+test("status and explicit off do not create config when already off", async () => {
 	const h = harness();
-	await h.run("on");
-	assert.equal(harness().request().service_tier, "default");
+	await h.run("status");
+	await h.run("off");
+	assert.equal(existsSync(configPath()), false);
+});
+
+test("failed config writes reject the command without reporting a successful toggle", async () => {
+	const h = harness();
+	mkdirSync(`${configPath()}.${process.pid}.tmp`, { recursive: true });
+	await assert.rejects(h.run("on"));
+	assert.equal(h.statuses.get(STATE_TYPE), "fast:off");
+	assert.deepEqual(h.notices, []);
 });
 
 test("command arguments offer filtered completions", () => {
@@ -294,5 +391,6 @@ test("headless mode persists and applies changes without UI calls", async () => 
 	await h.run("status");
 	await h.run("invalid");
 	assert.equal(h.request().service_tier, "priority");
-	assert.deepEqual(h.entries, [state(true)]);
+	assert.deepEqual(readConfig(), { enabled: true });
+	assert.deepEqual(h.entries, []);
 });

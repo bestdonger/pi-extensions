@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { loadFastMode, saveFastMode } from "./config.ts";
 import { installServiceTierPricing, type ServiceTierObservation } from "./provider-pricing.ts";
 
 const STATE_TYPE = "openai-fast-mode";
@@ -44,16 +45,15 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setStatus(STATE_TYPE, ctx.ui.theme.fg(active ? "accent" : "dim", label));
 	}
 
-	function restoreState(ctx: ExtensionContext) {
-		enabled = false;
-		lastRequests.clear();
-		for (const entry of ctx.sessionManager.getBranch()) {
-			if (entry.type === "custom" && entry.customType === STATE_TYPE) {
-				enabled = (entry.data as { enabled: boolean }).enabled;
-			}
-		}
-		installPricing(ctx);
+	function refreshState(ctx: ExtensionContext) {
+		enabled = loadFastMode();
 		updateStatus(ctx);
+	}
+
+	function restoreState(ctx: ExtensionContext) {
+		lastRequests.clear();
+		installPricing(ctx);
+		refreshState(ctx);
 	}
 
 	pi.on("session_start", (_event, ctx) => restoreState(ctx));
@@ -65,10 +65,11 @@ export default function (pi: ExtensionAPI) {
 	});
 	pi.on("model_select", (_event, ctx) => {
 		installPricing(ctx);
-		updateStatus(ctx);
+		refreshState(ctx);
 	});
 
 	pi.on("before_provider_request", (event, ctx) => {
+		refreshState(ctx);
 		if (!supportsFast(ctx.model)) return;
 		const payload = event.payload as { model: string; [key: string]: unknown };
 		if (!isGPT(payload.model)) return;
@@ -78,7 +79,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("fast", {
-		description: "切换 GPT Fast 模式；/fast [on|off|status]",
+		description: "切换全局 GPT Fast 模式；/fast [on|off|status]",
 		getArgumentCompletions(prefix) {
 			const matches = ACTIONS.filter((action) => action.value.startsWith(prefix));
 			return matches.length > 0 ? matches : null;
@@ -90,10 +91,11 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
+			enabled = loadFastMode();
 			if (action !== "status") {
 				const next = action === "" ? !enabled : action === "on";
 				if (next !== enabled) {
-					pi.appendEntry(STATE_TYPE, { enabled: next });
+					saveFastMode(next);
 					enabled = next;
 				}
 			}
@@ -114,7 +116,7 @@ export default function (pi: ExtensionAPI) {
 							: "费用估算优先采用上游回显档位，不代表实际账单。")
 					: " 当前模型尚无请求观测；开关状态不等于上游已确认加速。";
 			}
-			ctx.ui.notify(`Fast ${state}。${scope}${evidence}`, "info");
+			ctx.ui.notify(`Fast ${state}（全局）。${scope}${evidence}`, "info");
 		},
 	});
 }

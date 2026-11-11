@@ -39,7 +39,7 @@ pi install /absolute/path/pi-extensions/packages/fast-mode
 | `/fast status` | 查看开关、最近请求档位与上游回显，不切换 |
 
 - 状态栏显示 `fast:on` / `fast:off`，不加空格。
-- 新会话默认关闭；开关保存在当前会话分支，支持恢复会话、重新加载和树导航。
+- 开关保存为全局配置，跨项目、新会话、恢复会话和重启沿用；未配置时默认关闭。树导航不改变开关，不再读写会话分支中的旧开关记录。
 - 对 GPT 模型的 `openai-responses`、`openai-codex-responses`、`openai-completions` 请求生效，包括使用这些协议的兼容网关。
 - 开启发送 `service_tier: "priority"`，关闭显式发送 `service_tier: "default"`。此扩展接管适用请求的 `service_tier`，会覆盖 `models.json` 中的该字段，但不修改配置文件。
 - 不修改模型、思考等级、工具或上下文。
@@ -51,6 +51,20 @@ pi install /absolute/path/pi-extensions/packages/fast-mode
 计费包装只作用于 provider 的请求流方法，不重新注册 provider，不改变原认证、模型级路由头或模型配置；退出或重新加载插件时恢复原方法。
 
 Priority 的支持情况、实际速度、费用和订阅额度消耗由上游决定。开启后可能消耗更多费用或额度。插件状态表示请求的档位，不表示上游已确认使用 Priority。
+
+## 全局配置
+
+`/fast`、`/fast on` 和 `/fast off` 保存到 `~/.pi/agent/fast-mode.json`，不修改 Pi 的 `settings.json`：
+
+```json
+{
+  "enabled": true
+}
+```
+
+设置 `PI_CODING_AGENT_DIR` 时，配置文件位于该目录下。没有项目级覆盖。已打开的其他会话会在下一次请求（含缓存预热）、执行 `/fast` 命令、切换模型或树导航时读取最新配置；不改变已经发送的请求。
+
+升级前的会话开关不会自动迁移或覆盖全局配置。需要保持开启时，升级后执行一次 `/fast on`。
 
 ## 如何验证
 
@@ -75,7 +89,7 @@ npm test
 npm run test:package
 ```
 
-测试使用内存上下文和本机 Pi 加载器，不调用真实模型 API，不消耗模型费用。自动化测试不替代真实上游对 Priority 的支持验证。
+测试使用临时配置目录、内存上下文和本机 Pi 加载器，不调用真实模型 API，不消耗模型费用。自动化测试不替代真实上游对 Priority 的支持验证。
 
 ## 停用
 

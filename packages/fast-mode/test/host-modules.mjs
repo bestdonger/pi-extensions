@@ -8,6 +8,9 @@ export const ai = join(host, "node_modules/@earendil-works/pi-ai");
 // Tests resolve the installed host, just as Pi maps peer modules for extensions.
 registerHooks({
 	resolve(specifier, context, next) {
+		if (specifier === "@earendil-works/pi-coding-agent") {
+			return next(pathToFileURL(join(host, "dist/index.js")).href, context);
+		}
 		if (specifier === "@earendil-works/pi-ai/models") {
 			return next(pathToFileURL(join(ai, "dist/models.js")).href, context);
 		}
