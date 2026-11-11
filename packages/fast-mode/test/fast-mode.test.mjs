@@ -101,6 +101,78 @@ test("explicit on/off commands are idempotent and normalize whitespace/case", as
 	assert.deepEqual(h.entries, [state(true), state(false)]);
 });
 
+function diagnosticProvider(reported = "default") {
+	return {
+		stream() {},
+		streamSimple(model, _context, options) {
+			const message = {
+				role: "assistant", api: model.api,
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0, totalFromProvider: true } },
+			};
+			const ready = (async () => {
+				await options.onPayload({ model: model.id }, model);
+				await options.onProviderStreamEvent({ type: "response.completed", response: { service_tier: reported } }, model);
+			})();
+			return {
+				result: async () => { await ready; return message; },
+				async *[Symbol.asyncIterator]() { await ready; yield { type: "done", message }; },
+			};
+		},
+	};
+}
+
+async function observeRequest(h, provider, apiKey = "offline-oauth-token") {
+	return provider.streamSimple(h.ctx.model, {}, { apiKey, onPayload: (payload) => h.request(payload) }).result();
+}
+
+test("status separates subscription request tier from its non-authoritative default echo", async () => {
+	const provider = diagnosticProvider();
+	const h = harness([state(true)], provider);
+	h.ctx.model.baseUrl = "https://api.openai.com/v1";
+	await observeRequest(h, provider);
+	await h.run("status");
+	const notice = h.notices.at(-1).message;
+	assert.match(notice, /priority → 上游回显 default/);
+	assert.match(notice, /不能证明 Fast 未生效/);
+	assert.match(notice, /估算.*不代表实际账单/);
+	assert.equal(h.statuses.get(STATE_TYPE), "fast:on");
+});
+
+test("status does not apply subscription echo semantics to API keys", async () => {
+	const provider = diagnosticProvider();
+	const h = harness([state(true)], provider);
+	h.ctx.model.baseUrl = "https://api.openai.com/v1";
+	await observeRequest(h, provider, "sk-offline-test");
+	await h.run("status");
+	assert.match(h.notices.at(-1).message, /优先采用上游回显/);
+	assert.doesNotMatch(h.notices.at(-1).message, /订阅的 default/);
+});
+
+test("status has no observation before the first request or after branch navigation", async () => {
+	const provider = diagnosticProvider();
+	const h = harness([state(true)], provider);
+	await h.run("status");
+	assert.match(h.notices.at(-1).message, /尚无请求观测/);
+	await observeRequest(h, provider);
+	h.emit("session_tree");
+	await h.run("status");
+	assert.match(h.notices.at(-1).message, /尚无请求观测/);
+});
+
+test("status does not reuse another model's response tier", async () => {
+	const provider = diagnosticProvider();
+	const h = harness([state(true)], provider);
+	await observeRequest(h, provider);
+	h.ctx.model = { ...gpt, id: "gpt-6-astra" };
+	h.emit("model_select");
+	await h.run("status");
+	assert.match(h.notices.at(-1).message, /尚无请求观测/);
+	h.ctx.model = { ...gpt };
+	h.emit("model_select");
+	await h.run("status");
+	assert.match(h.notices.at(-1).message, /priority → 上游回显 default/);
+});
+
 test("status is read-only", async () => {
 	const h = harness([state(true)]);
 	await h.run("status");

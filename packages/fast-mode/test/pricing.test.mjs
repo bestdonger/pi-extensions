@@ -161,7 +161,7 @@ async function completionCost(requested, reported, upstreamCost) {
 	return result.usage.cost;
 }
 
-for (const reported of [undefined, "priority", "default", "flex"]) {
+for (const reported of [undefined, "priority", "fast", "default", "flex"]) {
 	test(`Chat Completions priority with reported ${reported ?? "missing"} applies the correct multiplier`, async () => {
 		const standard = await completionCost("default", "default");
 		const actual = await completionCost("priority", reported);

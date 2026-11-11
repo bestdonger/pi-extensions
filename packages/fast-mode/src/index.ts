@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { installServiceTierPricing } from "./provider-pricing.ts";
+import { installServiceTierPricing, type ServiceTierObservation } from "./provider-pricing.ts";
 
 const STATE_TYPE = "openai-fast-mode";
 const OPENAI_APIS = new Set([
@@ -17,7 +17,7 @@ function isGPT(id: string): boolean {
 	return /(?:^|\/)gpt-/i.test(id);
 }
 
-function supportsFast(model: ExtensionContext["model"]): boolean {
+function supportsFast(model: ExtensionContext["model"]): model is NonNullable<ExtensionContext["model"]> {
 	return model !== undefined && OPENAI_APIS.has(model.api) && isGPT(model.id);
 }
 
@@ -25,12 +25,15 @@ export default function (pi: ExtensionAPI) {
 	let enabled = false;
 	const wrappedProviders = new WeakSet<object>();
 	const restorePricing: Array<() => void> = [];
+	const lastRequests = new Map<string, ServiceTierObservation>();
 
 	function installPricing(ctx: ExtensionContext) {
 		if (!ctx.model || !supportsFast(ctx.model)) return;
 		const provider = ctx.modelRegistry.getProvider(ctx.model.provider);
 		if (!provider || wrappedProviders.has(provider)) return;
-		restorePricing.push(installServiceTierPricing(provider));
+		restorePricing.push(installServiceTierPricing(provider, (observation) => {
+			lastRequests.set(`${observation.provider}/${observation.model}`, observation);
+		}));
 		wrappedProviders.add(provider);
 	}
 
@@ -43,6 +46,7 @@ export default function (pi: ExtensionAPI) {
 
 	function restoreState(ctx: ExtensionContext) {
 		enabled = false;
+		lastRequests.clear();
 		for (const entry of ctx.sessionManager.getBranch()) {
 			if (entry.type === "custom" && entry.customType === STATE_TYPE) {
 				enabled = (entry.data as { enabled: boolean }).enabled;
@@ -96,11 +100,21 @@ export default function (pi: ExtensionAPI) {
 
 			updateStatus(ctx);
 			if (!ctx.hasUI) return;
-			const state = enabled ? "已开启（priority，费用或额度消耗更高）" : "已关闭（default）";
+			const state = enabled ? "请求已开启（priority，费用或额度消耗更高）" : "请求已关闭（default）";
 			const scope = supportsFast(ctx.model)
-				? "后续 GPT 请求生效，不改变思考等级。"
+				? `后续 GPT 请求发送 ${enabled ? "priority" : "default"}，不改变思考等级。`
 				: "当前模型不适用；切回 OpenAI 协议的 GPT 模型后生效。";
-			ctx.ui.notify(`Fast ${state}。${scope}`, "info");
+			let evidence = "";
+			if (action === "status" && supportsFast(ctx.model)) {
+				const last = lastRequests.get(`${ctx.model.provider}/${ctx.model.id}`);
+				evidence = last
+					? ` 最近请求（含缓存预热）：${last.requestedTier ?? "未指定"} → 上游回显 ${last.responseTier ?? "缺失"}。` +
+						(last.subscription
+							? "ChatGPT 订阅的 default 回显不能证明 Fast 未生效；费用按请求档位估算，不代表实际账单或额度消耗。"
+							: "费用估算优先采用上游回显档位，不代表实际账单。")
+					: " 当前模型尚无请求观测；开关状态不等于上游已确认加速。";
+			}
+			ctx.ui.notify(`Fast ${state}。${scope}${evidence}`, "info");
 		},
 	});
 }

@@ -36,7 +36,7 @@ pi install /absolute/path/pi-extensions/packages/fast-mode
 | `/fast` | 切换开启/关闭 |
 | `/fast on` | 开启 |
 | `/fast off` | 关闭 |
-| `/fast status` | 查看当前状态，不切换 |
+| `/fast status` | 查看开关、最近请求档位与上游回显，不切换 |
 
 - 状态栏显示 `fast:on` / `fast:off`，不加空格。
 - 新会话默认关闭；开关保存在当前会话分支，支持恢复会话、重新加载和树导航。
@@ -46,11 +46,19 @@ pi install /absolute/path/pi-extensions/packages/fast-mode
 - 切换到其他模型不改请求；开启状态显示为 `fast:on(GPT-only)`，切回适用的 GPT 模型后继续生效。
 - 切换只影响下一次发出的请求，不改变已经发送的请求。
 
-插件使用本机 Pi 的模型费率和服务档位倍率修正费用估算，包括 Codex 默认档位回显、Chat Completions 的 chunk 档位，以及 Responses 缺失档位时的请求值回退。普通流式请求和后台缓存预热都适用，不会把已有 Priority 费用重复翻倍，也不覆盖上游实报的费用。该估算不等同于上游实际账单。
+插件使用本机 Pi 的模型费率和服务档位倍率修正费用估算，包括旧版 Codex 和新版 OpenAI ChatGPT OAuth 的默认档位回显、Chat Completions 的 chunk 档位，以及 Responses 缺失档位时的请求值回退。订阅链路回显 `default` 或缺失时按请求档位估算；API key 与兼容网关仍优先采用上游回显，不能把明确的标准档位算成 Priority。普通流式请求和后台缓存预热都适用，不会重复翻倍，也不覆盖上游实报的费用。估算不等于实际账单、订阅额度消耗或已确认的处理档位。
 
 计费包装只作用于 provider 的请求流方法，不重新注册 provider，不改变原认证、模型级路由头或模型配置；退出或重新加载插件时恢复原方法。
 
 Priority 的支持情况、实际速度、费用和订阅额度消耗由上游决定。开启后可能消耗更多费用或额度。插件状态表示请求的档位，不表示上游已确认使用 Priority。
+
+## 如何验证
+
+`fast:on` 表示插件请求 Priority，不是服务端确认。`/fast status` 分开显示请求档位、原始上游回显及其解释，只保留当前加载周期内该模型最近一次请求的观测（含缓存预热）；重载和切换会话分支后清空。不记录凭据、提示词或原始响应。
+
+OpenAI 已说明，[ChatGPT 认证的 Codex 模式](https://github.com/openai/codex/issues/14204#issuecomment-4033184620)由服务端路由处理 Fast，最终 `service_tier: "default"` 不能证明 Fast 被忽略。这个说明针对订阅链路，不应套用到普通 API key 请求。
+
+2026-11-11 在新版 OpenAI ChatGPT OAuth 的公共 Responses 端点实测：账号模型目录为 `gpt-6.1-sol` 列出 `priority`，线上请求确实发送 `priority`，完成响应回显 `default`；改发原始 `fast` 则返回 HTTP 400 `Unsupported service_tier: fast`。因此保留 `priority`，不将该订阅回显或本机费用估算当作降级证据；也不宣称已确认实际加速。接口返回 HTTP 200 仅证明请求成功。
 
 ## 测试
 
